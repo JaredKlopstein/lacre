@@ -166,3 +166,120 @@ describe('lacre-verify bundle mode: trust anchors', () => {
     expect(r.out).toMatch(/pass the root certificate itself with --trust/);
   });
 });
+
+describe('lacre-verify bundle mode: verdict banner', () => {
+  const G4 = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'digicert-trusted-root-g4.pem');
+
+  it('names the untrusted-authority state in the banner, not only in a note', () => {
+    const r = cli([SAMPLE]);
+    expect(r.out.split('\n')[1]).toBe('VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST');
+  });
+
+  it('prints VERIFIED / ANCHORED once the authority is trusted', () => {
+    expect(cli([SAMPLE, '--trust', G4]).out.split('\n')[1]).toBe('VERIFIED / ANCHORED');
+  });
+
+  it('names a broken anchored head VERIFICATION FAILED / FORGERY DETECTED', () => {
+    const b = JSON.parse(readFileSync(SAMPLE, 'utf8')) as { receipts: { canonical_json: string }[] };
+    b.receipts[2]!.canonical_json = b.receipts[2]!.canonical_json.replace('"amount_usd":75', '"amount_usd":7500');
+    writeFileSync(path('forged-head.json'), JSON.stringify(b));
+    const r = cli([path('forged-head.json')]);
+    expect(r.code).toBe(1);
+    expect(r.out.split('\n')[1]).toBe('VERIFICATION FAILED / FORGERY DETECTED');
+  });
+
+  it('prints the receipt dates next to the range', () => {
+    expect(cli([SAMPLE]).out).toMatch(/dated\s+2026-10-27T16:28:00\.135Z to 2026-10-27T16:28:01\.000Z/);
+  });
+});
+
+describe('lacre-verify bundle mode: --require-trusted', () => {
+  const G4 = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'digicert-trusted-root-g4.pem');
+  const IMPOSTOR = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'impostor-trusted-root-g4.pem');
+
+  it('leaves the default exit code alone: an untrusted authority still exits 0', () => {
+    expect(cli([SAMPLE]).code).toBe(0);
+  });
+
+  it('exits 1 when no trusted authority is pinned', () => {
+    const r = cli([SAMPLE, '--require-trusted']);
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/REQUIREMENT NOT MET: --require-trusted/);
+    expect(r.out).toMatch(/--trust/);
+  });
+
+  it('exits 1 when the only anchor supplied is the wrong key', () => {
+    expect(cli([SAMPLE, '--require-trusted', '--trust', IMPOSTOR]).code).toBe(1);
+  });
+
+  it('exits 1 for a bundle that is not anchored at all', () => {
+    const b = JSON.parse(readFileSync(SAMPLE, 'utf8')) as Record<string, unknown>;
+    writeFileSync(path('unanchored.json'), JSON.stringify({ ...b, anchors: [] }));
+    expect(cli([path('unanchored.json'), '--require-trusted', '--trust', G4]).code).toBe(1);
+  });
+
+  it('exits 0 when the authority is trusted', () => {
+    const r = cli([SAMPLE, '--require-trusted', '--trust', G4]);
+    expect(r.code).toBe(0);
+    expect(r.out).not.toMatch(/REQUIREMENT NOT MET/);
+  });
+
+  it('reports the requirement in the --json verdict', () => {
+    const unmet = cli([SAMPLE, '--require-trusted', '--json']);
+    expect(unmet.code).toBe(1);
+    expect(JSON.parse(unmet.out)).toMatchObject({
+      ok: true,
+      require_trusted: { met: false, reason: expect.stringMatching(/--trust/) },
+    });
+    const met = cli([SAMPLE, '--require-trusted', '--trust', G4, '--json']);
+    expect(met.code).toBe(0);
+    expect(JSON.parse(met.out)).toMatchObject({ require_trusted: { met: true, reason: null } });
+  });
+
+  it('is documented in --help', () => {
+    expect(cli(['--help']).out).toMatch(/--require-trusted/);
+  });
+});
+
+describe('lacre-verify bundle mode: every error is JSON under --json', () => {
+  it('reports an unreadable bundle as a JSON error with exit 2', () => {
+    const r = cli([path('missing.json'), '--json']);
+    expect(r.code).toBe(2);
+    expect(r.err).toMatch(/could not read/);
+    expect(JSON.parse(r.out)).toEqual({
+      ok: false,
+      error: { code: 'BUNDLE_UNREADABLE', message: expect.stringMatching(/could not read .*missing\.json/) },
+    });
+  });
+
+  it('reports a bundle that is not JSON as a JSON error with exit 2', () => {
+    writeFileSync(path('not-json.json'), 'this is not json');
+    const r = cli([path('not-json.json'), '--json']);
+    expect(r.code).toBe(2);
+    expect(JSON.parse(r.out)).toMatchObject({ ok: false, error: { code: 'BUNDLE_UNREADABLE' } });
+  });
+
+  it('reports an unreadable trust file as a JSON error with exit 2', () => {
+    const r = cli([SAMPLE, '--trust', path('no-such-root.pem'), '--json']);
+    expect(r.code).toBe(2);
+    expect(JSON.parse(r.out)).toMatchObject({ ok: false, error: { code: 'TRUST_FILE_UNREADABLE' } });
+  });
+
+  it('rejects a trust file that holds no certificate instead of silently trusting nothing', () => {
+    writeFileSync(path('empty-root.pem'), 'not a certificate\n');
+    const r = cli([SAMPLE, '--trust', path('empty-root.pem')]);
+    expect(r.code).toBe(2);
+    expect(r.err).toMatch(/no certificate/);
+    expect(JSON.parse(cli([SAMPLE, '--trust', path('empty-root.pem'), '--json']).out))
+      .toMatchObject({ ok: false, error: { code: 'TRUST_FILE_UNREADABLE' } });
+  });
+
+  it('accepts a DER certificate, which is how DigiCert serves .crt files', () => {
+    const pem = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'digicert-trusted-root-g4.pem'), 'utf8');
+    const der = Buffer.from(pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, ''), 'base64');
+    writeFileSync(path('DigiCertTrustedRootG4.crt'), der);
+    const r = cli([SAMPLE, '--trust', path('DigiCertTrustedRootG4.crt')]);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/trusted by you: yes/);
+  });
+});

@@ -276,9 +276,9 @@
         <div class="plate-cap"><span>Anchored bundle</span><span>paid</span></div>
 <pre>$ lacre-verify evidence.json
 …
-VERIFICATION FAILED
+VERIFICATION FAILED / FORGERY DETECTED
 …
-<span class="r">FORGERY DETECTED.</span> The receipts in this bundle do not produce the head that was externally timestamped at seq 2. Someone altered the history after it was anchored, and could not forge a replacement timestamp. Do not trust this bundle.
+<span class="r">VERIFICATION FAILED / FORGERY DETECTED.</span> The receipts in this bundle do not produce the head that was externally timestamped at seq 2. Someone altered the history after it was anchored, and could not forge a replacement timestamp. Do not trust this bundle.
 …
 FAILURES (1)
   seq 2  ANCHOR_HEAD_MISMATCH

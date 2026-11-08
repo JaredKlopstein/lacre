@@ -96,7 +96,7 @@ It exits `0` and prints:
 
 ```
 ------------------------------------------------------------------------
-VERIFIED / ANCHORED
+VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST
 ------------------------------------------------------------------------
 ...
 ANCHORS
@@ -126,8 +126,8 @@ node packages/verifier/bin/lacre-verify.mjs examples/sample-evidence/evidence.js
   --trust DigiCertTrustedRootG4.crt.pem
 ```
 
-It still exits `0` with `VERIFIED / ANCHORED`, and the anchor now reports
-`trusted by you: yes`. The verifier matches a trust anchor by subject name plus
+It still exits `0`, the verdict becomes `VERIFIED / ANCHORED`, and the anchor
+now reports `trusted by you: yes`. The verifier matches a trust anchor by subject name plus
 public key, as RFC 5280 defines one, so the self-signed root anchors the
 cross-signed copy in the token. It prints the fingerprint of the certificate you
 supplied:
@@ -144,6 +144,13 @@ for DigiCert Trusted Root G4 on its own root certificate page,
 file. A repository is exactly where an attacker would plant a fingerprint they
 wanted you to trust.
 
+Exit `0` without an authority you trust does not establish who issued the
+timestamp. In a script or CI gate, add `--require-trusted` to the command above:
+it then exits `1` unless an anchor is from an authority you passed with `--trust`.
+And always compare the anchor's `attested time` with the receipt dates the
+verifier prints (`dated`). The anchor proves the record existed, unchanged, at
+that time, and says nothing about what happened to it before then.
+
 Add `--json` to either command for a machine-readable verdict.
 
 ## What each verdict line means
@@ -152,9 +159,11 @@ The first line of the verifier's output is the verdict:
 
 | Verdict | Exit | Meaning |
 |---|---|---|
-| `VERIFIED / ANCHORED` | 0 | Every receipt is intact and correctly signed, and at least one external timestamp commits to the chain head that was recomputed. Receipts after the highest anchored `seq` are still unanchored; the verifier warns about them. |
+| `VERIFIED / ANCHORED` | 0 | Every receipt is intact and correctly signed, and at least one external timestamp from an authority you trust (pinned with `--trust` or `--trust-fingerprint`) commits to the chain head that was recomputed. Receipts after the highest anchored `seq` are still unanchored; the verifier warns about them. |
+| `VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST` | 0 (1 with `--require-trusted`) | Every receipt is intact and correctly signed, and an external timestamp commits to the chain head, but you have not told the verifier to trust the authority that issued it, so who issued the timestamp is not established. Pin the authority with `--trust` (its root certificate) and run again. A first run on any bundle shows this. |
 | `VERIFIED / NOT ANCHORED` | 0 | Every receipt is intact and correctly signed, but no external timestamp commits to the chain. The record is self-attested, the same guarantee as a local `chain verify`. |
 | `VERIFICATION FAILED` | 1 | At least one receipt is altered, missing or wrongly signed. `FAILURES` names each one by `seq` (for example `HASH_MISMATCH`, `SIGNATURE_INVALID`), and `STILL PROVABLY INTACT` lists the ranges you can still rely on. |
+| `VERIFICATION FAILED / FORGERY DETECTED` | 1 | The receipts do not produce the chain head that an external timestamp committed to: the history was altered after it was anchored. `FAILURES` shows `ANCHOR_HEAD_MISMATCH` at the anchored `seq`. Do not trust the bundle. |
 | *(usage message on stderr)* | 2 | The bundle could not be read, or an option was unknown or malformed. No verdict is given. |
 
 Each entry under `ANCHORS` reports:

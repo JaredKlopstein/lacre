@@ -17,10 +17,10 @@
  *      and is used for RSA/ECDSA and X.509 in RFC 3161 tokens.
  *   4. Only @noble/ed25519 and @noble/hashes as dependencies.
  */
-export { verifyBundle, BUNDLE_FORMAT } from './bundle.js';
+export { verifyBundle, BUNDLE_FORMAT, VERDICT_NAMES } from './bundle.js';
 export type {
   Bundle, BundleVerdict, BundleReceipt, BundleAnchor, AnchorVerdict,
-  Failure, FailureKind, VerifyOptions,
+  Failure, FailureKind, VerifyOptions, VerdictName,
 } from './bundle.js';
 export { checkRun } from './run.js';
 export type { RunReport, RunKeys, BrokenLink, BrokenLinkKind, Gap, DuplicateAttempt } from './run.js';

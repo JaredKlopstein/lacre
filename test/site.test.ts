@@ -162,14 +162,16 @@ describe('terminal plates', () => {
   it('quotes the verifier’s forgery verdict in full, down to "Do not trust this bundle."', () => {
     const [, anchored] = plates;
     const verifier = src('verifier/src/bundle.ts');
-    for (const line of ['VERIFICATION FAILED', 'ANCHOR_HEAD_MISMATCH']) {
+    for (const line of ['VERIFICATION FAILED / FORGERY DETECTED', 'ANCHOR_HEAD_MISMATCH']) {
       expect(anchored).toContain(line);
       expect(verifier + src('verifier/src/cli.ts')).toContain(line);
     }
-    const verdict = 'FORGERY DETECTED. The receipts in this bundle do not produce the head that was externally timestamped at seq 2. Someone altered the history after it was anchored, and could not forge a replacement timestamp. Do not trust this bundle.';
-    expect(anchored).toContain(verdict);
-    // bundle.ts builds the sentence from string pieces split across lines.
-    expect(verifier).toContain('`FORGERY DETECTED. The receipts in this bundle do not produce the head that was `');
+    const verdict = 'VERIFICATION FAILED / FORGERY DETECTED. The receipts in this bundle do not produce the head that was externally timestamped at seq 2. Someone altered the history after it was anchored, and could not forge a replacement timestamp. Do not trust this bundle.';
+    expect(anchored.replace(/<[^>]+>/g, '')).toContain(verdict);
+    // bundle.ts builds the sentence from the canonical verdict name plus string
+    // pieces split across lines.
+    expect(verifier).toContain("'VERIFICATION FAILED / FORGERY DETECTED'");
+    expect(verifier).toContain('`${v.verdict}. The receipts in this bundle do not produce the head that was `');
     expect(verifier).toContain('`was anchored, and could not forge a replacement timestamp. Do not trust this bundle.`');
   });
 });

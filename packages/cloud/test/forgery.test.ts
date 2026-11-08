@@ -122,14 +122,16 @@ describe('an honest anchored bundle', () => {
     expect(v.anchors).toHaveLength(1);
     expect(v.anchors[0]!.is_evidence).toBe(true);
     expect(v.anchors[0]!.timestamp?.trusted).toBe(true);
-    expect(v.conclusion).toContain('VERIFIED AND ANCHORED');
+    expect(v.verdict).toBe('VERIFIED / ANCHORED');
+    expect(v.conclusion).toContain('VERIFIED / ANCHORED.');
   });
 
   it('reports an unanchored bundle as self-attested, not as evidence', () => {
     const v = verifyBundle(exportBundle(db));
     expect(v.ok).toBe(true); // internally consistent...
     expect(v.anchored).toBe(false); // ...but proves nothing to a third party
-    expect(v.conclusion).toContain('VERIFIED BUT NOT ANCHORED');
+    expect(v.verdict).toBe('VERIFIED / NOT ANCHORED');
+    expect(v.conclusion).toContain('VERIFIED / NOT ANCHORED.');
     expect(v.conclusion).toContain('self-attested');
   });
 
@@ -148,6 +150,37 @@ describe('an honest anchored bundle', () => {
  * DEFINITION OF DONE #2 -- THE FORGERY TEST.
  * If any of these pass a forged bundle, the paywall is worthless.
  */
+/**
+ * An anchor proves the history existed at the anchor time. It says nothing
+ * about the time before: an operator who anchors in March for actions dated in
+ * January could have rebuilt January's receipts at any point until March. The
+ * verdict has to put both times in front of the reader, and say so loudly when
+ * the gap is long.
+ */
+describe('an anchor made long after the receipts it covers', () => {
+  const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+
+  it('states the gap and warns that the receipts could have been rewritten before the anchor', async () => {
+    // Re-date every receipt three days earlier (with the agent key, relinking
+    // as it goes), then anchor now. The bundle is internally flawless.
+    for (let seq = 0; seq < 10; seq++) {
+      forgeHistory(seq, (r) => {
+        r.timestamp = new Date(Date.parse(r.timestamp) - THREE_DAYS).toISOString();
+      });
+    }
+    await createAnchor(db, 'test-tsa');
+
+    const v = verifyBundle(exportBundle(db), { trustedFingerprints: [tsa.rootFingerprint] });
+    expect(v.ok).toBe(true);
+    expect(v.verdict).toBe('VERIFIED / ANCHORED');
+    expect(v.conclusion).toMatch(/3 days after the last receipt it covers/);
+    expect(v.conclusion).not.toMatch(/could not have altered/);
+    const gap = v.warnings.find((w) => /after the last receipt it covers/.test(w));
+    expect(gap).toMatch(/3 days/);
+    expect(gap).toMatch(/nothing about/);
+  });
+});
+
 describe('the forgery test', () => {
   it('FIRST: proves a self-hosted chain alone cannot stop the operator', () => {
     // Establish the baseline honestly. Without an anchor, a full rebuild is
@@ -195,6 +228,7 @@ describe('the forgery test', () => {
     const mismatch = v.failures.find((f) => f.kind === 'ANCHOR_HEAD_MISMATCH');
     expect(mismatch).toBeDefined();
     expect(mismatch!.seq).toBe(9);
+    expect(v.verdict).toBe('VERIFICATION FAILED / FORGERY DETECTED');
     expect(v.conclusion).toContain('FORGERY DETECTED');
     // The anchor's own token is still perfectly valid -- it just commits to a
     // history that no longer exists.
@@ -321,7 +355,7 @@ describe('the forgery test', () => {
     expect(v.anchored_through_seq).toBe(9);
     expect(v.unanchored_receipt_count).toBe(2);
     expect(v.warnings.join(' ')).toMatch(/are NOT covered by any external anchor/);
-    expect(v.conclusion).toContain('ANCHORED THROUGH SEQ 9');
+    expect(v.conclusion).toContain('through seq 9');
     expect(v.conclusion).toContain('are NOT anchored');
   });
 
