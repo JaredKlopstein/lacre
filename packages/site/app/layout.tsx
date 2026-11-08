@@ -29,7 +29,8 @@ const NAV = [
   { href: '/pricing', label: 'Pricing' },
   { href: '/enterprise', label: 'Enterprise' },
   { href: '/signup', label: 'Sign in', kind: 'action' },
-  { href: GETTING_STARTED_URL, label: 'Start free', kind: 'cta' },
+  // Start free leaves the site for the getting-started guide on GitHub; the hint says so.
+  { href: GETTING_STARTED_URL, label: 'Start free', kind: 'cta', hint: '(guide on GitHub)' },
 ] as const;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -54,7 +55,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <NavMenu items={NAV} />
           </div>
         </header>
-        <main id="main">{children}</main>
+        {/* tabIndex -1 lets the skip link move focus here, so VoiceOver follows it too. */}
+        <main id="main" tabIndex={-1}>
+          {children}
+        </main>
         <footer>
           <SiteFooter />
         </footer>
