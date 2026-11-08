@@ -7,10 +7,28 @@ import { openDb, closeDb, type Db } from '../src/db/client.js';
 import { appendReceipt } from '../src/chain/append.js';
 import { registerAgent } from '../src/agents/store.js';
 import { agentReliability } from '../src/agents/reliability.js';
-import { generateKeypair, deriveAgentId, publicKeyToJwk } from '../src/crypto/keys.js';
+import { generateKeypair, fromSecretKey, deriveAgentId, publicKeyToJwk, type Keypair } from '../src/crypto/keys.js';
 import { randomUUID } from 'node:crypto';
 
 let store: string;
+
+/**
+ * Deterministic Ed25519 keypair from a fixed seed. Random keys made these tests
+ * flaky: about 1 in 4096 base64url public keys begins with '--', and the CLI
+ * used to read such a key as a flag.
+ */
+function seededKeypair(n: number): Keypair {
+  const seed = new Uint8Array(32);
+  new DataView(seed.buffer).setUint32(0, n);
+  return fromSecretKey(seed);
+}
+const b64u = (kp: Keypair): string => Buffer.from(kp.publicKey).toString('base64url');
+
+/** Seeds whose public keys do NOT begin with '-'. */
+const REMOTE = seededKeypair(1);
+const OTHER = seededKeypair(2);
+/** Seed 15922's public key is '--gSlTqSBTaS_...': valid base64url that begins with '--'. */
+const DASH = seededKeypair(15922);
 
 async function json(args: string): Promise<{ code: number; body: Record<string, unknown> }> {
   let out = '';
@@ -21,7 +39,7 @@ async function json(args: string): Promise<{ code: number; body: Record<string, 
   return { code, body: JSON.parse(code === 0 ? out : err) as Record<string, unknown> };
 }
 
-beforeEach(() => { store = mkdtempSync(join(tmpdir(), 'provenant-gaps-')); });
+beforeEach(() => { store = mkdtempSync(join(tmpdir(), 'lacre-gaps-')); });
 afterEach(() => rmSync(store, { recursive: true, force: true }));
 
 describe('keygen', () => {
@@ -89,29 +107,99 @@ describe('agent.register', () => {
   it('refuses to rebind an id to a different key (TOFU)', async () => {
     await json('keygen');
     await json('agent register --agent-id billing-eu');
-    const other = generateKeypair();
-    const pk = Buffer.from(other.publicKey).toString('base64url');
-    const r = await json(`agent register --agent-id billing-eu --public-key ${pk}`);
+    const r = await json(`agent register --agent-id billing-eu --public-key ${b64u(OTHER)}`);
     expect(r.code).toBe(1);
     expect((r.body.error as { code: string }).code).toBe('AGENT_KEY_MISMATCH');
   });
 
   it('can enrol a remote agent from its public key alone', async () => {
     await json('keygen');
-    const remote = generateKeypair();
-    const pk = Buffer.from(remote.publicKey).toString('base64url');
-    const r = await json(`agent register --agent-id worker-7 --public-key ${pk}`);
+    const r = await json(`agent register --agent-id worker-7 --public-key ${b64u(REMOTE)}`);
     expect(r.code).toBe(0);
-    expect((r.body.result as { key_id: string }).key_id).toBe(remote.keyId);
+    expect((r.body.result as { key_id: string }).key_id).toBe(REMOTE.keyId);
   });
 
   it('warns in a dry run that a rebind would fail', async () => {
     await json('keygen');
     await json('agent register --agent-id billing-eu');
-    const other = generateKeypair();
-    const pk = Buffer.from(other.publicKey).toString('base64url');
-    const dry = await json(`agent register --agent-id billing-eu --public-key ${pk} --dry-run`);
+    const dry = await json(`agent register --agent-id billing-eu --public-key ${b64u(OTHER)} --dry-run`);
     expect((dry.body.result as { note: string }).note).toMatch(/would FAIL/);
+  });
+});
+
+/**
+ * About 1 in 4096 base64url Ed25519 public keys begins with '--'. The registry
+ * knows --public-key takes a value, so the next token is that value even when
+ * it starts with '--'. These use a fixed key that does.
+ */
+describe('agent.register with a public key that begins with "--"', () => {
+  it('fixture: the key really does begin with "--" and the others do not', () => {
+    expect(b64u(DASH)).toMatch(/^--/);
+    expect(b64u(REMOTE)).not.toMatch(/^-/);
+    expect(b64u(OTHER)).not.toMatch(/^-/);
+  });
+
+  it('enrols the remote agent when the key is passed space-separated', async () => {
+    await json('keygen');
+    const r = await json(`agent register --agent-id worker-7 --public-key ${b64u(DASH)}`);
+    expect(r.code).toBe(0);
+    expect((r.body.result as { key_id: string }).key_id).toBe(DASH.keyId);
+  });
+
+  it('enrols the remote agent when the key is attached with "="', async () => {
+    await json('keygen');
+    const r = await json(`agent register --agent-id worker-7 --public-key=${b64u(DASH)}`);
+    expect(r.code).toBe(0);
+    expect((r.body.result as { key_id: string }).key_id).toBe(DASH.keyId);
+  });
+
+  it('accepts the key through the --pubkey alias', async () => {
+    await json('keygen');
+    const r = await json(`agent register --agent-id worker-7 --pubkey ${b64u(DASH)}`);
+    expect(r.code).toBe(0);
+    expect((r.body.result as { key_id: string }).key_id).toBe(DASH.keyId);
+  });
+
+  it('still refuses to rebind an id to it (TOFU)', async () => {
+    await json('keygen');
+    await json('agent register --agent-id billing-eu');
+    const r = await json(`agent register --agent-id billing-eu --public-key ${b64u(DASH)}`);
+    expect(r.code).toBe(1);
+    expect((r.body.error as { code: string }).code).toBe('AGENT_KEY_MISMATCH');
+  });
+
+  it('warns in a dry run that a rebind to it would fail, and writes nothing', async () => {
+    await json('keygen');
+    await json('agent register --agent-id billing-eu');
+    const dry = await json(`agent register --agent-id billing-eu --public-key ${b64u(DASH)} --dry-run`);
+    expect(dry.code).toBe(0);
+    expect((dry.body.result as { note: string }).note).toMatch(/would FAIL/);
+    const fresh = await json(`agent register --agent-id worker-7 --public-key ${b64u(DASH)} --dry-run`);
+    expect((fresh.body.result as { note: string }).note).toMatch(/DRY RUN: nothing was written/);
+    expect(((await json('agent list')).body.result as { count: number }).count).toBe(1);
+  });
+});
+
+describe('value-taking options and option-shaped tokens', () => {
+  it('still reads an option-shaped typo as an option, and rejects it unexecuted', async () => {
+    await json('keygen');
+    // '--dryrun' is a typo of --dry-run. Swallowing it as the display name
+    // would run the mutation for real; it must stay an option and be refused.
+    const r = await json('agent register --agent-id worker-7 --display-name --dryrun');
+    expect(r.code).toBe(1);
+    const e = r.body.error as { code: string; fix: { note: string } };
+    expect(e.code).toBe('UNKNOWN_ARGUMENT');
+    expect(e.fix.note).toMatch(/--display-name=<value>/);
+    expect(((await json('agent list')).body.result as { count: number }).count).toBe(0);
+  });
+
+  it('teaches the --option=value form when a value-taking option has no value', async () => {
+    await json('keygen');
+    const r = await json('agent register --agent-id worker-7 --public-key');
+    expect(r.code).toBe(1);
+    const e = r.body.error as { code: string; fix: { note: string } };
+    expect(e.code).toBe('INVALID_INPUT');
+    expect(e.fix.note).toMatch(/--public-key=<value>/);
   });
 });
 

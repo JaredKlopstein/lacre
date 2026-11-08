@@ -1,7 +1,7 @@
 # Getting started from source
 
 `@lacre/core` and `@lacre/verifier` are not published to npm yet, so
-`npx @lacre/...` and a global `provenant` command will not work. Until they
+`npx @lacre/...` and a global `lacre` command will not work. Until they
 are, run everything from a source checkout. Every command below runs from the
 repository root, in order, with no edits.
 
@@ -11,8 +11,8 @@ version).
 ## 1. Clone and build
 
 ```bash
-git clone https://github.com/JaredKlopstein/provenant.git
-cd provenant
+git clone https://github.com/JaredKlopstein/lacre.git
+cd lacre
 pnpm install
 pnpm run build
 ```
@@ -23,12 +23,12 @@ with a module-not-found error.
 
 ## 2. Record and verify a receipt locally
 
-By default Provenant keeps its store in `~/.provenant`. To keep this
+By default Lacre keeps its store in `~/.lacre`. To keep this
 walkthrough out of your home directory, point it at a store inside the checkout
-(`.provenant/` is gitignored):
+(`.lacre/` is gitignored):
 
 ```bash
-export PROVENANT_HOME="$PWD/.provenant"
+export LACRE_HOME="$PWD/.lacre"
 ```
 
 Create a signing key and register this agent:
@@ -146,5 +146,5 @@ and exits `1`.
 
 When `@lacre/core` and `@lacre/verifier` are on npm, `npx
 @lacre/verifier` replaces `node packages/verifier/bin/lacre-verify.mjs`,
-and an installed `provenant` command replaces `node
+and an installed `lacre` command replaces `node
 packages/core/bin/lacre.mjs`. The arguments stay the same.
