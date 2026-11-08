@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs';
 import { X509Certificate } from 'node:crypto';
 import { verifyBundle, type BundleVerdict, type VerifyOptions } from './bundle.js';
 import { checkRun, type RunReport } from './run.js';
+import { fingerprintProblem } from './rfc3161.js';
 
 export interface VerifyIO {
   out(s: string): void;
@@ -32,12 +33,17 @@ USAGE
 
 OPTIONS
   --json              Machine-readable verdict on stdout
-  --trust <file>      PEM file of timestamp-authority certificates you trust.
-                      May be repeated. Without it the token is still checked
-                      cryptographically, but reported as untrusted -- because a
-                      root embedded in the bundle proves nothing on its own.
+  --trust <file>      PEM file of timestamp-authority certificates you trust,
+                      usually the authority's root as it publishes it. May be
+                      repeated. Matched by subject name plus public key, so a
+                      root and a cross-signed copy of it are the same anchor.
+                      Without it the token is still checked cryptographically,
+                      but reported as untrusted -- because a root embedded in
+                      the bundle proves nothing on its own.
   --trust-fingerprint <sha256>
-                      Pin an authority by certificate fingerprint instead.
+                      Pin a certificate the token carries by its SHA-256
+                      fingerprint (64 hex characters, colons allowed). To trust
+                      a root the token omits, pass the root with --trust.
   --backdate-tolerance-ms <n>
                       Clock skew allowed before a post-anchor receipt claiming
                       an earlier time is treated as backdating (default 300000).
@@ -79,7 +85,11 @@ export function runVerify(argv: string[], io: VerifyIO = defaultIO): number {
       if (v === undefined || v === '' || v.startsWith('--')) return usage(`${a} needs a value. Try --help.`);
       i++;
       if (a === '--trust') trustFiles.push(v);
-      else if (a === '--trust-fingerprint') fingerprints.push(v);
+      else if (a === '--trust-fingerprint') {
+        const problem = fingerprintProblem(v);
+        if (problem) return usage(`--trust-fingerprint ${problem}`);
+        fingerprints.push(v);
+      }
       else if (!/^\d+$/.test(v) || !Number.isSafeInteger(Number(v))) {
         return usage(`--backdate-tolerance-ms must be a non-negative integer of milliseconds, got '${v}'.`);
       } else opts.backdateToleranceMs = Number(v);
@@ -119,12 +129,29 @@ export function runVerify(argv: string[], io: VerifyIO = defaultIO): number {
   const verdict = verifyBundle(bundle, opts);
 
   if (json) io.out(JSON.stringify(verdict, null, 2));
-  else io.out(render(verdict));
+  else io.out(render(verdict, { trustFiles: trustFiles.length > 0, fingerprints: fingerprints.length > 0 }));
 
   return verdict.ok ? 0 : 1;
 }
 
-function render(v: BundleVerdict): string {
+/** Why an anchor is not trusted, in terms of what the caller actually passed. */
+function untrustedReason(given: { trustFiles: boolean; fingerprints: boolean }): string[] {
+  if (!given.trustFiles && !given.fingerprints) return ['NO -- pass --trust or --trust-fingerprint'];
+  const L = ['NO -- nothing you passed anchors this chain'];
+  if (given.trustFiles) {
+    L.push('no --trust certificate has the subject name and public key of a certificate on this chain');
+  }
+  if (given.fingerprints) {
+    L.push(
+      'your --trust-fingerprint pin matched no certificate on this chain. A fingerprint can only',
+      'match a certificate the verifier holds. If you pinned a root this token does not carry,',
+      'pass the root certificate itself with --trust.',
+    );
+  }
+  return L;
+}
+
+function render(v: BundleVerdict, given: { trustFiles: boolean; fingerprints: boolean }): string {
   const L: string[] = [];
   const rule = '-'.repeat(72);
 
@@ -146,9 +173,18 @@ function render(v: BundleVerdict): string {
       if (a.timestamp?.signer) L.push(`    authority     : ${a.timestamp.signer}`);
       if (a.timestamp?.chain.top) {
         L.push(`    chain top     : ${a.timestamp.chain.top.subject}`);
+        L.push(`    issued by     : ${a.timestamp.chain.top.issuer}`);
         L.push(`    fingerprint   : ${a.timestamp.chain.top.fingerprint_sha256}`);
       }
-      L.push(`    trusted by you: ${a.timestamp?.trusted ? 'yes' : 'NO -- pass --trust or --trust-fingerprint'}`);
+      const by = a.timestamp?.trusted_by;
+      if (a.timestamp?.trusted && by) {
+        L.push(`    trusted by you: yes -- anchored at your certificate '${by.subject}'`);
+        L.push(`    your anchor   : ${by.fingerprint_sha256}`);
+      } else {
+        const [first, ...rest] = untrustedReason(given);
+        L.push(`    trusted by you: ${first}`);
+        for (const r of rest) L.push(`                    ${r}`);
+      }
       L.push(`    ${a.note}`);
     }
   }

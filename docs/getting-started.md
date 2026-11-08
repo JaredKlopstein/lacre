@@ -91,27 +91,48 @@ VERIFIED / ANCHORED
 ...
 ANCHORS
   seq 2  [tsa]  EVIDENCE
-    attested time : 2026-09-03T18:42:30.000Z
+    attested time : 2026-10-27T16:28:05.000Z
     authority     : C=US, O=DigiCert\, Inc., CN=DigiCert SHA256 RSA4096 Timestamp Responder 2026 1
     chain top     : C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Trusted Root G4
+    issued by     : C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Assured ID Root CA
     fingerprint   : 33846b545a49c9be4903c60e01713c1bd4e4ef31ea65cd95d69e62794f30b941
     trusted by you: NO -- pass --trust or --trust-fingerprint
 ```
 
 The mathematics checks out, but the authority is **not in your trust list**.
 Trust has to come from you, not from the bundle, because anyone can embed a
-self-signed root. To close that loop, pin DigiCert Trusted Root G4 by its
-fingerprint:
+self-signed root.
+
+The chain top above is DigiCert Trusted Root G4 **cross-signed by DigiCert
+Assured ID Root CA**, which is why its fingerprint is not the one DigiCert lists
+for the root. Do not pin that value: it comes from the bundle. Instead, supply
+the root DigiCert publishes. Download DigiCert Trusted Root G4 in PEM form from
+<https://cacerts.digicert.com/DigiCertTrustedRootG4.crt.pem> (or export it from
+your operating system's trust store) and save it in the repository root as
+`DigiCertTrustedRootG4.crt.pem`. Then:
 
 ```bash
 node packages/verifier/bin/lacre-verify.mjs examples/sample-evidence/evidence.json \
-  --trust-fingerprint 33846b545a49c9be4903c60e01713c1bd4e4ef31ea65cd95d69e62794f30b941
+  --trust DigiCertTrustedRootG4.crt.pem
 ```
 
 It still exits `0` with `VERIFIED / ANCHORED`, and the anchor now reports
-`trusted by you: yes`. Confirm that fingerprint with DigiCert directly rather
-than taking it from this file. A repository is exactly where an attacker would
-plant a fingerprint they wanted you to trust.
+`trusted by you: yes`. The verifier matches a trust anchor by subject name plus
+public key, as RFC 5280 defines one, so the self-signed root anchors the
+cross-signed copy in the token. It prints the fingerprint of the certificate you
+supplied:
+
+```
+    trusted by you: yes -- anchored at your certificate 'C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Trusted Root G4'
+    your anchor   : 552f7bdcf1a7af9e6ce672017f4f12abf77240c78e761ac203d1d9d20ac89988
+```
+
+Check that `your anchor` value against the SHA-256 fingerprint DigiCert lists
+for DigiCert Trusted Root G4 on its own root certificate page,
+<https://knowledge.digicert.com/general-information/digicert-trusted-root-authority-certificates>
+(there it reads `55:2F:7B:DC:...:0A:C8:99:88`), rather than taking it from this
+file. A repository is exactly where an attacker would plant a fingerprint they
+wanted you to trust.
 
 Add `--json` to either command for a machine-readable verdict.
 
