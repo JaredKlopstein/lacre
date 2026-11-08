@@ -1,6 +1,6 @@
 {
   "name": "@lacre/verifier",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Standalone offline verifier for Lacre evidence bundles. Zero network, zero Lacre runtime dependency. MIT.",
   "license": "MIT",
   "type": "module",
