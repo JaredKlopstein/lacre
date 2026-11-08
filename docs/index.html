@@ -174,15 +174,22 @@
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
   .moved{background:var(--ink);color:var(--paper);font-family:var(--mono);font-size:13px;line-height:1.5;padding:10px 0}
   .moved a{color:var(--paper);text-decoration:underline;text-underline-offset:3px}
+  .moved p{margin:0}
+  /* Skip link: off screen until it takes keyboard focus. */
+  .skip{position:absolute;left:8px;top:-60px;z-index:10;padding:8px 12px;background:var(--paper);color:var(--ink);font:500 13px/1.4 var(--mono)}
+  .skip:focus{top:8px}
+  main:focus{outline:none}
+  pre.cmd:focus-visible{outline:2px solid var(--seal-red);outline-offset:3px}
 </style>
 </head>
 <body>
 
-<div class="moved">
-  <p class="wrap">Provenant is now Lacre. The main site is <a href="https://lacre-site.vercel.app/">lacre-site.vercel.app</a>.</p>
-</div>
+<a class="skip" href="#main">Skip to content</a>
 
 <header>
+  <div class="moved">
+    <p class="wrap">Provenant is now Lacre. The main site is <a href="https://lacre-site.vercel.app/">lacre-site.vercel.app</a>.</p>
+  </div>
   <div class="wrap masthead">
     <div class="logo">Lacre <span>TAMPER-EVIDENT RECEIPTS</span></div>
     <nav>
@@ -193,7 +200,7 @@
   </div>
 </header>
 
-<main class="wrap">
+<main class="wrap" id="main" tabindex="-1">
 
   <div class="hero">
     <span class="eyebrow">For teams running AI agents that touch money, mail, or customer data</span>
@@ -224,8 +231,9 @@
       <button id="btn-reset" class="ghost">Reset</button>
     </div>
     <p class="step-note" id="step-note">
-      These are three real receipts, with the hashes recomputed from their bytes as you change them.
-      The last one was timestamped by DigiCert on 27&nbsp;October&nbsp;2026.
+      The hashes are recomputed from these receipts’ bytes as you change them. The page carries the
+      head DigiCert timestamped on 27&nbsp;October&nbsp;2026, not the timestamp token itself, so the
+      anchor can’t be checked from here. To check one, verify the sample bundle below.
     </p>
   </div>
 
@@ -239,9 +247,11 @@
         The result is a chain that is internally flawless.
       </p>
       <p>
-        Below is that exact attack, run against a real store. On the left, Lacre's own local
+        Below is that exact attack, run against a scratch store. On the left, Lacre's own local
         verification. On the right, the same forged chain checked against its external timestamp.
-        <strong>Both outputs are copied verbatim from the tool.</strong>
+        <strong>Both are the tools' real output, trimmed where you see …</strong>
+        Commands are shortened to their bin names, and lines starting with # are our notes.
+        The bundle on the right was anchored with the repository's test timestamp authority.
       </p>
     </div>
 
@@ -249,10 +259,15 @@
       <div class="plate">
         <div class="plate-cap"><span>Local verification</span><span>free</span></div>
 <pre>$ lacre chain verify
-
-<span class="g">ok: true</span>
-failures: <span class="g">0</span>
-receipts_checked: 3
+{
+  <span class="g">"ok": true</span>,
+  "receipts_checked": 3,
+  …
+  <span class="g">"failures": []</span>,
+  …
+  "anchored": false,
+  "anchor_note": "This chain is self-attested: it proves internal consistency only. An operator with database access could have rewritten the entire history, including this result. …"
+}
 
 <span class="d"># the forged chain passes,
 # completely.</span></pre>
@@ -260,15 +275,16 @@ receipts_checked: 3
       <div class="plate">
         <div class="plate-cap"><span>Anchored bundle</span><span>paid</span></div>
 <pre>$ lacre-verify evidence.json
+…
+VERIFICATION FAILED
+…
+<span class="r">FORGERY DETECTED.</span> The receipts in this bundle do not produce the head that was externally timestamped at seq 2. Someone altered the history after it was anchored, and could not forge a replacement timestamp. Do not trust this bundle.
+…
+FAILURES (1)
+  seq 2  ANCHOR_HEAD_MISMATCH
+…
 
-<span class="r">FORGERY DETECTED.</span> The receipts in
-this bundle do not produce the head
-that was externally timestamped at
-seq 2. Someone altered the history
-after it was anchored, and could not
-forge a replacement timestamp.
-
-<span class="d">exit 1</span></pre>
+<span class="d"># exit status 1</span></pre>
       </div>
     </div>
   </section>
@@ -339,11 +355,14 @@ forge a replacement timestamp.
   <section id="start">
     <span class="eyebrow">Start</span>
     <h3>Sixty seconds to a verified receipt</h3>
-<pre class="cmd"><span class="c"># from source — these packages are not on npm yet</span>
+<pre class="cmd" tabindex="0" role="region" aria-label="Quick start commands"><span class="c"># from source — these packages are not on npm yet</span>
 git clone https://github.com/JaredKlopstein/lacre.git
 cd lacre
 pnpm install
 pnpm run build
+
+<span class="c"># keep the store in this clone, not in ~/.lacre (.lacre/ is gitignored)</span>
+export LACRE_HOME="$PWD/.lacre"
 
 <span class="c"># record what your agent just did</span>
 node packages/core/bin/lacre.mjs init
@@ -358,8 +377,9 @@ node packages/core/bin/lacre.mjs chain verify
 node packages/verifier/bin/lacre-verify.mjs examples/sample-evidence/evidence.json</pre>
     <div class="prose">
       <p>
-        There is a real DigiCert-anchored sample bundle in the repository. Verify it before you
-        trust anything on this page.
+        There is a real DigiCert-anchored sample bundle in the repository, with its timestamp token,
+        so you can check the anchor yourself. It is a different chain from Exhibit A. Verify it
+        before you trust anything on this page.
       </p>
     </div>
   </section>
@@ -394,7 +414,7 @@ node packages/verifier/bin/lacre-verify.mjs examples/sample-evidence/evidence.js
   <div class="wrap">
     Lacre — MIT licensed core and verifier ·
     <a href="https://github.com/JaredKlopstein/lacre">Source on GitHub</a><br>
-    The chain above is real. Break it, then check the arithmetic yourself.
+    Break the chain above, then check the arithmetic yourself.
   </div>
 </footer>
 
@@ -484,8 +504,8 @@ function render(rows){
 
   if(state==='intact'){
     v.className='verdict ok'; t.textContent='Intact';
-    b.textContent='Every receipt hashes to the value the next one points at, and the head matches the timestamp DigiCert signed. Nothing has been altered.';
-    note.textContent='These are three real receipts, with the hashes recomputed from their bytes as you change them. The last one was timestamped by DigiCert on '+anchorDate+'.';
+    b.textContent='Every receipt hashes to the value the next one points at, and the head matches the one recorded as timestamped by DigiCert. Nothing has been altered.';
+    note.textContent='The hashes are recomputed from these receipts\u2019 bytes as you change them. The page carries the head DigiCert timestamped on '+anchorDate+', not the timestamp token itself, so the anchor can\u2019t be checked from here. To check one, verify the sample bundle below.';
   } else if(state==='tampered'){
     v.className='verdict bad'; t.textContent='Broken at seq 1';
     b.textContent='Changing the refund changed its hash, so the next receipt now points at a value that no longer exists. This is the crude attack, and a local check catches it.';

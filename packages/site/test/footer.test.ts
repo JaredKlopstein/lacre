@@ -52,17 +52,21 @@ describe('site footer', () => {
       'Source on GitHub',
       'Terms',
       'Privacy',
-      'Contact',
+      LEGAL.contactEmail ? 'Contact' : 'Sales and enterprise',
+      'Report a vulnerability',
     ]);
     for (const link of links) expect(resolves(link.href), link.href).toBe(true);
   });
 
-  it('keeps the #96 legal nav exactly as it shipped', () => {
+  it('keeps #96’s Terms and Privacy, labels the enterprise form as sales, and links vulnerability reporting', () => {
+    // "Contact" only once there is a contact address; until then the link goes to the sales and
+    // enterprise form, so it says so rather than promising a general contact.
     const contact = LEGAL.contactEmail
       ? `<a href="mailto:${LEGAL.contactEmail}">Contact</a>`
-      : '<a href="/enterprise">Contact</a>';
+      : '<a href="/enterprise">Sales and enterprise</a>';
     expect(footer).toContain(
-      `<nav aria-label="Legal"><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · ${contact}</nav>`,
+      `<nav aria-label="Legal"><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · ${contact} · ` +
+        '<a href="/security#report-a-vulnerability">Report a vulnerability</a></nav>',
     );
     expect(html.match(/<nav aria-label="Legal">/g)).toHaveLength(1);
   });

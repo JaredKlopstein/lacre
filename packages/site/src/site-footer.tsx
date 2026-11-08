@@ -36,8 +36,9 @@ function Links({ items }: { items: readonly FooterLink[] }) {
 
 /**
  * The site footer, rendered inside the root layout's <footer>: four columns
- * (Product, Developers, Project, Status), then the legal links exactly as #96
- * ships them, then the name, tagline and disclaimer.
+ * (Product, Developers, Project, Status), then the legal links (#96's Terms and
+ * Privacy, the contact or sales link, and where to report a vulnerability), then
+ * the name, tagline and disclaimer.
  */
 export function SiteFooter() {
   return (
@@ -67,11 +68,14 @@ export function SiteFooter() {
       <div className={styles.base}>
         <nav aria-label="Legal">
           <Link href={TERMS_PATH}>Terms</Link> · <Link href={PRIVACY_PATH}>Privacy</Link> ·{' '}
+          {/* No contact address is published until the owner supplies one (#113), so the
+              fallback is labelled for what it is: the sales and enterprise form. */}
           {LEGAL.contactEmail ? (
             <a href={`mailto:${LEGAL.contactEmail}`}>Contact</a>
           ) : (
-            <Link href="/enterprise">Contact</Link>
-          )}
+            <Link href="/enterprise">Sales and enterprise</Link>
+          )}{' '}
+          · <Link href="/security#report-a-vulnerability">Report a vulnerability</Link>
         </nav>
         {/* #113: the legal entity and contact line goes here once the owner supplies it. */}
         <p>
