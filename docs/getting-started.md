@@ -159,9 +159,11 @@ The first line of the verifier's output is the verdict:
 
 | Verdict | Exit | Meaning |
 |---|---|---|
-| `VERIFIED / ANCHORED` | 0 | Every receipt is intact and correctly signed, and at least one external timestamp commits to the chain head that was recomputed. Receipts after the highest anchored `seq` are still unanchored; the verifier warns about them. |
+| `VERIFIED / ANCHORED` | 0 | Every receipt is intact and correctly signed, and at least one external timestamp from an authority you trust (pinned with `--trust` or `--trust-fingerprint`) commits to the chain head that was recomputed. Receipts after the highest anchored `seq` are still unanchored; the verifier warns about them. |
+| `VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST` | 0 (1 with `--require-trusted`) | Every receipt is intact and correctly signed, and an external timestamp commits to the chain head, but you have not told the verifier to trust the authority that issued it, so who issued the timestamp is not established. Pin the authority with `--trust` (its root certificate) and run again. A first run on any bundle shows this. |
 | `VERIFIED / NOT ANCHORED` | 0 | Every receipt is intact and correctly signed, but no external timestamp commits to the chain. The record is self-attested, the same guarantee as a local `chain verify`. |
 | `VERIFICATION FAILED` | 1 | At least one receipt is altered, missing or wrongly signed. `FAILURES` names each one by `seq` (for example `HASH_MISMATCH`, `SIGNATURE_INVALID`), and `STILL PROVABLY INTACT` lists the ranges you can still rely on. |
+| `VERIFICATION FAILED / FORGERY DETECTED` | 1 | The receipts do not produce the chain head that an external timestamp committed to: the history was altered after it was anchored. `FAILURES` shows `ANCHOR_HEAD_MISMATCH` at the anchored `seq`. Do not trust the bundle. |
 | *(usage message on stderr)* | 2 | The bundle could not be read, or an option was unknown or malformed. No verdict is given. |
 
 Each entry under `ANCHORS` reports:
