@@ -7,6 +7,8 @@ import HomePage from '../packages/site/app/page.js';
 import HowItWorksPage from '../packages/site/app/how-it-works/page.js';
 import VerifyPage from '../packages/site/app/verify/page.js';
 import SecurityPage from '../packages/site/app/security/page.js';
+// A test may read the verifier; the site itself may not (scripts/check-boundaries.mjs).
+import { VERDICT_NAMES } from '../packages/verifier/src/bundle.js';
 
 /**
  * The Next.js site in packages/site. Copy and metadata read from BRAND so the
@@ -176,6 +178,30 @@ describe('verify page', () => {
 
   it('links the getting-started guide', () => {
     expect(verify).toContain(`href="${BRAND.repository}/blob/main/docs/getting-started.md"`);
+  });
+
+  it('documents every verdict the verifier can print, by the verifier\'s own names', () => {
+    const rows = [...verify.matchAll(/<th scope="row"><code>([^<]+)<\/code>/g)].map((m) => unescape(m[1]!));
+    expect(rows).toEqual([...VERDICT_NAMES]);
+  });
+
+  it('says what an auditor can and cannot conclude from each verdict', () => {
+    expect(body).toContain('You can conclude');
+    expect(body).toContain('You cannot conclude');
+  });
+
+  it('tells the reader to compare the anchor time with the dates of the actions', () => {
+    expect(body).toContain('Always compare the anchor time with the dates of the actions you are auditing');
+  });
+
+  it('says exit 0 without a trusted authority does not establish who issued the timestamp', () => {
+    expect(body).toContain('Exit 0 without an authority you trust does not establish who issued the timestamp');
+    expect(body).toContain('--require-trusted');
+  });
+
+  it('states what a verified bundle does not tell you, including where the keys come from', () => {
+    expect(body).toContain('What a verified bundle does not tell you');
+    expect(body).toContain('The public keys come from the bundle itself');
   });
 });
 
