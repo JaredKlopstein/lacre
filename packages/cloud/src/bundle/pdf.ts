@@ -13,6 +13,10 @@
 import PDFDocument from 'pdfkit';
 import type { Bundle } from '@lacre/verifier';
 import { verifyBundle, type VerifyOptions } from '@lacre/verifier';
+import { VERIFY_STEPS, verifyCommand, verdictTone, anchorTime, establishes, type Tone } from './report-copy.js';
+
+const INK: Record<Tone, string> = { ok: '#1a7f45', warn: '#8a5a00', bad: '#a11' };
+const FILL: Record<Tone, string> = { ok: '#e7f5ec', warn: '#fff6e5', bad: '#fdeaea' };
 
 export interface PdfOptions extends VerifyOptions {
   title?: string;
@@ -21,11 +25,11 @@ export interface PdfOptions extends VerifyOptions {
 
 export function bundleToPdf(bundle: Bundle, opts: PdfOptions = {}): Promise<Buffer> {
   const verdict = verifyBundle(bundle, opts);
-  // Same rule as the HTML report: an anchor from an authority the reader has not
-  // vouched for must not be presented as settled proof. `is_evidence` requires
-  // only that the token is sound and commits to this history -- it deliberately
-  // says nothing about who vouches for the signer.
-  const trustedAnchor = verdict.anchors.some((a) => a.is_evidence && a.timestamp?.trusted);
+  // Same rule as the HTML report: the headline is the verifier's own verdict
+  // name, and an anchor from an authority the reader has not vouched for has
+  // its own name and is never shown as good news.
+  const tone = verdictTone(verdict);
+  const anchoredAt = anchorTime(verdict);
   const doc = new PDFDocument({ size: 'LETTER', margin: 54 });
   const chunks: Buffer[] = [];
 
@@ -51,23 +55,13 @@ export function bundleToPdf(bundle: Bundle, opts: PdfOptions = {}): Promise<Buff
     doc.moveTo(54, doc.y).lineTo(558, doc.y).strokeColor('#ddd').stroke();
 
     // ---- verdict banner ----
-    const good = verdict.ok && verdict.anchored && trustedAnchor;
-    const warn = verdict.ok && (!verdict.anchored || !trustedAnchor);
     doc.moveDown(0.8);
-    doc.rect(54, doc.y, 504, 26).fill(good ? '#e7f5ec' : warn ? '#fff6e5' : '#fdeaea');
-    doc.fillColor(good ? '#1a7f45' : warn ? '#8a5a00' : '#a11')
-      .font('Helvetica-Bold').fontSize(12)
-      .text(
-        verdict.ok
-          ? verdict.anchored
-            ? trustedAnchor
-              ? 'VERIFIED — EXTERNALLY ANCHORED'
-              : 'VERIFIED — AUTHORITY NOT VERIFIED'
-            : 'VERIFIED — NOT ANCHORED'
-          : 'VERIFICATION FAILED',
-        62, doc.y - 19,
-      );
-    doc.moveDown(1.4);
+    const bannerY = doc.y;
+    doc.rect(54, bannerY, 504, 26).fill(FILL[tone]);
+    doc.fillColor(INK[tone]).font('Helvetica-Bold').fontSize(11).text(verdict.verdict, 62, bannerY + 8, { width: 488 });
+    doc.x = 54;
+    doc.y = bannerY + 26;
+    doc.moveDown(0.6);
     P(verdict.conclusion, '#222');
 
     // ---- scope ----
@@ -76,10 +70,10 @@ export function bundleToPdf(bundle: Bundle, opts: PdfOptions = {}): Promise<Buff
     KV('Receipts', String(verdict.receipts_checked));
     if (verdict.range) KV('Positions', `seq ${verdict.range.from_seq} through ${verdict.range.to_seq}`);
     const s = bundle.summary as Record<string, unknown> | undefined;
-    if (s?.time_range) {
-      const tr = s.time_range as { first: string; last: string };
-      KV('Time span', `${tr.first} to ${tr.last}`);
+    if (verdict.receipt_time_range) {
+      KV('Receipts dated', `${verdict.receipt_time_range.first} to ${verdict.receipt_time_range.last}`);
     }
+    if (anchoredAt) KV('Anchor time', anchoredAt);
     if (s) {
       KV('Agents', String(s.agent_count ?? '—'));
       KV('Irreversible actions', String(s.irreversible_actions ?? 0));
@@ -93,11 +87,25 @@ export function bundleToPdf(bundle: Bundle, opts: PdfOptions = {}): Promise<Buff
       for (const a of verdict.anchors) {
         doc.moveDown(0.3);
         KV('Position', `seq ${a.seq}`);
-        KV('Status', a.is_evidence ? 'EVIDENCE — constrains the operator' : 'not evidence');
+        KV(
+          'Status',
+          !a.is_evidence
+            ? 'not evidence'
+            : a.timestamp?.trusted
+              ? 'EVIDENCE — constrains the operator from the attested time on'
+              : 'EVIDENCE only once you trust the authority',
+        );
         if (a.proven_time) KV('Attested time', a.proven_time);
         if (a.timestamp?.signer) KV('Authority', a.timestamp.signer);
-        if (a.timestamp?.chain.top) KV('Trust anchor', a.timestamp.chain.top.subject);
-        if (a.timestamp?.chain.top) KV('  fingerprint', a.timestamp.chain.top.fingerprint_sha256);
+        if (a.timestamp?.chain.top) {
+          KV('Chain top', a.timestamp.chain.top.subject);
+          KV('  issued by', a.timestamp.chain.top.issuer);
+          KV('  fingerprint', a.timestamp.chain.top.fingerprint_sha256);
+        }
+        if (a.timestamp?.trusted_by) {
+          KV('Your trust anchor', a.timestamp.trusted_by.subject);
+          KV('  fingerprint', a.timestamp.trusted_by.fingerprint_sha256);
+        }
         KV('In your trust list', a.timestamp?.trusted ? 'yes' : 'NO — confirm independently');
         P(a.note, '#555');
       }
@@ -131,45 +139,18 @@ export function bundleToPdf(bundle: Bundle, opts: PdfOptions = {}): Promise<Buff
     H('How to verify this yourself');
     P(
       'This PDF is a summary, not the evidence. It has no cryptographic value and anyone can edit it. ' +
-      'The evidence is the accompanying JSON bundle. To check it independently, without trusting the ' +
-      'operator of this system and without a network connection:',
+      VERIFY_STEPS.before,
       '#222',
     );
     doc.moveDown(0.4);
-    doc.font('Courier').fontSize(9).fillColor('#111')
-      .text('  npx @lacre/verifier bundle.json --trust <authority-root.pem>');
+    doc.font('Courier').fontSize(9).fillColor('#111').text('  ' + verifyCommand('bundle.json'));
     doc.moveDown(0.4);
-    P(
-      'The verifier is MIT licensed, makes no network connections, and shares no code with the software ' +
-      'that produced this bundle. It re-derives every hash and re-checks every signature from the bundle ' +
-      'contents alone.',
-      '#555',
-    );
+    P(VERIFY_STEPS.after, '#333');
+    doc.moveDown(0.3);
+    P(VERIFY_STEPS.independence, '#555');
 
     H('What this does and does not establish', 11);
-    P(
-      '• It establishes that the receipts shown are internally consistent and were signed by the ' +
-      'registered agent keys.',
-      '#333',
-    );
-    P(
-      !verdict.anchored
-        ? '• It does NOT establish that the history is unaltered. Without an external anchor, the operator ' +
-          'could have rewritten everything and it would still verify.'
-        : trustedAnchor
-          ? '• It establishes, via a timestamp authority you have told this tool to trust, that this exact ' +
-            'history existed at the attested time and has not been altered since.'
-          : '• It does NOT yet establish that the history is unaltered. A timestamp token is present and ' +
-            'cryptographically sound, but the authority that signed it is not in your trust list, so ' +
-            'nothing rules out that the signer was chosen by whoever produced this bundle. Confirm the ' +
-            'fingerprint above against the authority directly, then re-run with --trust-fingerprint.',
-      trustedAnchor ? '#1a7f45' : '#8a5a00',
-    );
-    P(
-      '• It does NOT make anyone compliant with any regulation. Lacre produces tamper-evident ' +
-      'records that support logging obligations. This is not legal advice.',
-      '#333',
-    );
+    for (const b of establishes(verdict)) P('• ' + b.text, b.emphasis ? INK[b.emphasis] : '#333');
 
     doc.end();
   });

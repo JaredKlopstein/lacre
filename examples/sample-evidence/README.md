@@ -14,8 +14,8 @@ Run it from the root of a source checkout after `pnpm install && pnpm run build`
 (see [Getting started from source](../../docs/getting-started.md)).
 `npx @lacre/verifier` works in its place once the package is published to npm.
 
-It will report `VERIFIED / ANCHORED` and print DigiCert as the attesting
-authority, while also telling you the authority is **not in your trust list**,
+It will report `VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST` and
+print DigiCert as the attesting authority, while also telling you the authority is **not in your trust list**,
 because trust has to come from you, not from the bundle.
 
 The certificate at the top of the token's chain is DigiCert Trusted Root G4
@@ -29,8 +29,8 @@ node packages/verifier/bin/lacre-verify.mjs examples/sample-evidence/evidence.js
   --trust DigiCertTrustedRootG4.crt.pem
 ```
 
-The verdict stays `VERIFIED / ANCHORED`, and the anchor now reports `trusted by
-you: yes`. The verifier matches the anchor by subject name plus public key (RFC
+The verdict becomes `VERIFIED / ANCHORED`, and the anchor now reports `trusted
+by you: yes`. The verifier matches the anchor by subject name plus public key (RFC
 5280), which is why the self-signed root anchors the cross-signed copy in the
 token. (Again, `npx @lacre/verifier` works in place of the `node` path once the
 package is published to npm.)

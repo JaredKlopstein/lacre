@@ -21,6 +21,26 @@ import { verifyTimestampToken, type TimestampVerdict } from './rfc3161.js';
 
 export const BUNDLE_FORMAT = 'lacre-bundle-v1';
 
+/**
+ * Every verdict state, by the one name the CLI banner, the PDF and HTML reports
+ * and the /verify page all use. The names come from the CLI. The only addition
+ * is the second one: the state every first-time reader sees (a sound anchor
+ * from an authority they have not yet chosen to trust) used to share the
+ * banner VERIFIED / ANCHORED and was easy to read as settled proof.
+ */
+export const VERDICT_NAMES = [
+  'VERIFIED / ANCHORED',
+  'VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST',
+  'VERIFIED / NOT ANCHORED',
+  'VERIFICATION FAILED',
+  'VERIFICATION FAILED / FORGERY DETECTED',
+] as const;
+export type VerdictName = (typeof VERDICT_NAMES)[number];
+
+/** Above this, the gap between the last receipt an anchor covers and the anchor
+ *  itself is called out as a warning, not just stated. */
+const LONG_ANCHOR_GAP_MS = 24 * 60 * 60 * 1000;
+
 export interface BundleAnchor {
   id: string;
   statement: { v: string; chain_id: string; seq: number; head_hash: string; receipt_count: number };
@@ -82,6 +102,8 @@ export interface AnchorVerdict {
 
 export interface BundleVerdict {
   ok: boolean;
+  /** The verdict state, by its canonical name. See VERDICT_NAMES. */
+  verdict: VerdictName;
   format: string;
   chain_id: string | null;
   receipts_checked: number;
@@ -106,6 +128,12 @@ export interface BundleVerdict {
   /** True when at least one verified anchor came from an authority in the
    *  caller's trust list. `anchored` alone says nothing about who vouches. */
   anchor_authority_trusted: boolean;
+  /**
+   * Earliest and latest timestamp the receipts carry, as the agents recorded
+   * them. Compare these with each anchor's proven_time: an anchor proves the
+   * history existed at that time, and says nothing about the time before it.
+   */
+  receipt_time_range: { first: string; last: string } | null;
   warnings: string[];
   /** Plain-language statement of exactly what was and was not established. */
   conclusion: string;
@@ -129,10 +157,11 @@ function isObj(v: unknown): v is Record<string, unknown> {
 
 export function verifyBundle(input: unknown, opts: VerifyOptions = {}): BundleVerdict {
   const verdict: BundleVerdict = {
-    ok: false, format: 'unknown', chain_id: null, receipts_checked: 0, range: null,
+    ok: false, verdict: 'VERIFICATION FAILED', format: 'unknown', chain_id: null,
+    receipts_checked: 0, range: null,
     failures: [], intact_ranges: [], anchors: [], anchored: false,
     anchored_through_seq: null, unanchored_receipt_count: 0,
-    anchor_authority_trusted: false, warnings: [],
+    anchor_authority_trusted: false, receipt_time_range: null, warnings: [],
     conclusion: '',
   };
 
@@ -257,6 +286,7 @@ export function verifyBundle(input: unknown, opts: VerifyOptions = {}): BundleVe
   }
 
   verdict.intact_ranges = toRanges(intactSeqs);
+  verdict.receipt_time_range = timeRange([...timestampAt.values()]);
 
   // ---------------------------------------------------------------- anchors
   const tolerance = opts.backdateToleranceMs ?? DEFAULT_BACKDATE_TOLERANCE_MS;
@@ -299,6 +329,19 @@ export function verifyBundle(input: unknown, opts: VerifyOptions = {}): BundleVe
       ? sorted.length
       : sorted.filter((r) => r.seq > verdict.anchored_through_seq!).length;
 
+  // An anchor made long after the receipts it covers proves little about them:
+  // until the anchor time, whoever held the chain could have rewritten it.
+  for (const a of verdict.anchors) {
+    const gap = anchorGap(a, timestampAt);
+    if (gap && gap.ms > LONG_ANCHOR_GAP_MS) {
+      verdict.warnings.push(
+        `the anchor at seq ${a.seq} (${a.proven_time}) was made ${duration(gap.ms)} after the last receipt it covers ` +
+          `(${gap.last}). It proves those receipts were unchanged from ${a.proven_time} on, and nothing about ` +
+          `the ${duration(gap.ms)} before.`,
+      );
+    }
+  }
+
   // A tail beyond the last anchor is a real limitation, not a footnote: a pure
   // hash chain cannot detect receipts appended (or removed) after the anchor.
   if (verdict.anchored && verdict.unanchored_receipt_count > 0) {
@@ -309,8 +352,43 @@ export function verifyBundle(input: unknown, opts: VerifyOptions = {}): BundleVe
   }
 
   verdict.ok = verdict.failures.length === 0;
-  verdict.conclusion = describe(verdict);
+  verdict.verdict = nameOf(verdict);
+  verdict.conclusion = describe(verdict, timestampAt);
   return verdict;
+}
+
+function nameOf(v: BundleVerdict): VerdictName {
+  if (!v.ok) {
+    return v.failures.some((f) => f.kind === 'ANCHOR_HEAD_MISMATCH')
+      ? 'VERIFICATION FAILED / FORGERY DETECTED'
+      : 'VERIFICATION FAILED';
+  }
+  if (!v.anchored) return 'VERIFIED / NOT ANCHORED';
+  return v.anchor_authority_trusted ? 'VERIFIED / ANCHORED' : 'VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST';
+}
+
+function timeRange(stamps: string[]): { first: string; last: string } | null {
+  const valid = stamps.filter((t) => Number.isFinite(Date.parse(t)));
+  if (valid.length === 0) return null;
+  const sorted = [...valid].sort((a, b) => Date.parse(a) - Date.parse(b));
+  return { first: sorted[0]!, last: sorted[sorted.length - 1]! };
+}
+
+/** How long after the last receipt it covers an evidence anchor was made. */
+function anchorGap(a: AnchorVerdict, timestampAt: Map<number, string>): { ms: number; last: string } | null {
+  if (!a.is_evidence || !a.proven_time) return null;
+  const covered = timeRange([...timestampAt].filter(([seq]) => seq <= a.seq).map(([, t]) => t));
+  if (!covered) return null;
+  return { ms: Date.parse(a.proven_time) - Date.parse(covered.last), last: covered.last };
+}
+
+function duration(ms: number): string {
+  const s = Math.round(Math.abs(ms) / 1000);
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+  if (s < 120) return plural(s, 'second');
+  if (s < 2 * 3600) return plural(Math.round(s / 60), 'minute');
+  if (s < 48 * 3600) return plural(Math.round(s / 3600), 'hour');
+  return plural(Math.round(s / 86400), 'day');
 }
 
 function verifyAnchor(
@@ -441,43 +519,65 @@ function toRanges(seqs: number[]): Array<{ from_seq: number; to_seq: number }> {
 
 /** Plain language, because the audience for a failed verification is a human
  *  under time pressure who must decide what it means. */
-function describe(v: BundleVerdict): string {
+function describe(v: BundleVerdict, timestampAt: Map<number, string>): string {
   if (v.failures.length > 0) {
     const kinds = [...new Set(v.failures.map((f) => f.kind))];
     const anchorBreak = v.failures.find((f) => f.kind === 'ANCHOR_HEAD_MISMATCH');
     if (anchorBreak) {
       return (
-        `FORGERY DETECTED. The receipts in this bundle do not produce the head that was ` +
+        `${v.verdict}. The receipts in this bundle do not produce the head that was ` +
         `externally timestamped at seq ${anchorBreak.seq}. Someone altered the history after it ` +
         `was anchored, and could not forge a replacement timestamp. Do not trust this bundle.`
       );
     }
     return (
-      `VERIFICATION FAILED (${kinds.join(', ')}). ${v.failures.length} problem(s) found across ` +
+      `${v.verdict} (${kinds.join(', ')}). ${v.failures.length} problem(s) found across ` +
       `${v.receipts_checked} receipts. Receipts still provably intact: ` +
       `${v.intact_ranges.map((r) => `${r.from_seq}-${r.to_seq}`).join(', ') || 'none'}.`
     );
   }
+
+  const signed =
+    `All ${v.receipts_checked} receipts are internally consistent and correctly signed by the ` +
+    `agent keys included in this bundle.`;
+  const dated = v.receipt_time_range
+    ? ` They are dated ${v.receipt_time_range.first} to ${v.receipt_time_range.last}, as the agents recorded them.`
+    : '';
+
   if (v.anchored) {
-    const ev = v.anchors.filter((a) => a.is_evidence);
+    // Describe the anchor the verdict name rests on: the highest trusted one
+    // when any is trusted, otherwise the highest one.
+    const ev = v.anchors.filter((a) => a.is_evidence && (!v.anchor_authority_trusted || a.timestamp?.trusted));
+    const lead = ev.reduce((best, a) => (a.seq > best.seq ? a : best));
+    const when = lead.proven_time ?? 'an unknown time';
+    const gap = anchorGap(lead, timestampAt);
+    const gapText = !gap
+      ? ''
+      : gap.ms >= 0
+        ? `, ${duration(gap.ms)} after the last receipt it covers`
+        : `, although the last receipt it covers claims a time ${duration(gap.ms)} later`;
+    const others = ev.length > 1 ? ` (the latest of ${ev.length} external timestamps)` : '';
     const tail =
       v.unanchored_receipt_count > 0
         ? ` ${v.unanchored_receipt_count} receipt(s) after seq ${v.anchored_through_seq} are NOT anchored and are backed only by the operator's own chain.`
         : '';
+    const trust = v.anchor_authority_trusted
+      ? ` The authority is in your trust list.`
+      : ` NOTE: '${lead.timestamp?.signer ?? 'the authority'}' is not in your trust list, so this does not yet ` +
+        `establish who issued the timestamp. Get the authority's root certificate from the authority itself, ` +
+        `pass it with --trust, and run the verifier again before relying on this.`;
     return (
-      `VERIFIED AND ANCHORED THROUGH SEQ ${v.anchored_through_seq}. All ${v.receipts_checked} receipts are ` +
-      `internally consistent and correctly signed, and ${ev.length} external timestamp(s) prove the history ` +
-      `up to seq ${v.anchored_through_seq} existed at ${ev.map((a) => a.proven_time).join(', ')}. The operator ` +
-      `could not have altered anything at or before that position without breaking the timestamp.` +
+      `${v.verdict}. ${signed}${dated} An external timestamp${others} from '${lead.timestamp?.signer ?? 'unknown authority'}' ` +
+      `proves the history through seq ${lead.seq} existed, exactly as it is now, at ${when}${gapText}. ` +
+      `Nothing at or before seq ${lead.seq} can have been changed after ${when} without detection. ` +
+      `It does not show the record was unchanged before ${when}: until then, whoever held the chain could ` +
+      `have rewritten it, so compare ${when} with the dates of the actions you are auditing.` +
       tail +
-      (v.anchor_authority_trusted
-        ? ''
-        : ' NOTE: the timestamp authority was not in your trust list -- confirm you trust it before relying on this.')
+      trust
     );
   }
   return (
-    `VERIFIED BUT NOT ANCHORED. All ${v.receipts_checked} receipts are internally consistent and ` +
-    `correctly signed, but nothing here constrains the operator: with database access they could have ` +
+    `${v.verdict}. ${signed}${dated} Nothing here constrains the operator: with database access they could have ` +
     `rebuilt this entire history, and it would still verify exactly like this. Treat it as ` +
     `self-attested, not as evidence.`
   );

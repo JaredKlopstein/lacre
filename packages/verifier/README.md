@@ -16,6 +16,10 @@ Run from a source checkout after `pnpm install && pnpm run build` (see
 `npx @lacre/verifier` works in its place once the package is published to npm.
 
 Exit codes: `0` verified, `1` verification failed, `2` bundle unreadable or bad arguments.
+Exit `0` does not mean you trust the timestamp authority: in a script or CI gate,
+add `--require-trusted` (with `--trust`), which makes an anchor from an authority
+outside your trust list exit `1`. Under `--json`, every outcome is JSON, including
+exit-`2` errors (`{ "ok": false, "error": { "code", "message" } }`).
 
 ## Checking a single run
 

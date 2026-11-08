@@ -63,11 +63,11 @@
 <body>
 <main>
   <h1>Lacre Evidence Report</h1>
-  <p class="sub">generated 2026-10-27T16:28:10.886Z</p>
+  <p class="sub">generated 2026-11-08T16:20:20.089Z</p>
 
-  <div class="verdict ok">
-    <strong>Verified — anchored by an unverified authority</strong>
-    <p>VERIFIED AND ANCHORED THROUGH SEQ 2. All 3 receipts are internally consistent and correctly signed, and 1 external timestamp(s) prove the history up to seq 2 existed at 2026-10-27T16:28:05.000Z. The operator could not have altered anything at or before that position without breaking the timestamp. NOTE: the timestamp authority was not in your trust list -- confirm you trust it before relying on this.</p>
+  <div class="verdict warn">
+    <strong>VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST</strong>
+    <p>VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST. All 3 receipts are internally consistent and correctly signed by the agent keys included in this bundle. They are dated 2026-10-27T16:28:00.135Z to 2026-10-27T16:28:01.000Z, as the agents recorded them. An external timestamp from &#39;C=US, O=DigiCert\, Inc., CN=DigiCert SHA256 RSA4096 Timestamp Responder 2026 1&#39; proves the history through seq 2 existed, exactly as it is now, at 2026-10-27T16:28:05.000Z, 4 seconds after the last receipt it covers. Nothing at or before seq 2 can have been changed after 2026-10-27T16:28:05.000Z without detection. It does not show the record was unchanged before 2026-10-27T16:28:05.000Z: until then, whoever held the chain could have rewritten it, so compare 2026-10-27T16:28:05.000Z with the dates of the actions you are auditing. NOTE: &#39;C=US, O=DigiCert\, Inc., CN=DigiCert SHA256 RSA4096 Timestamp Responder 2026 1&#39; is not in your trust list, so this does not yet establish who issued the timestamp. Get the authority&#39;s root certificate from the authority itself, pass it with --trust, and run the verifier again before relying on this.</p>
   </div>
 
   <h2>Scope</h2>
@@ -75,7 +75,8 @@
     <dt>Chain</dt><dd>e9642d14-d9ee-4b2c-9f76-11f2e07068f8</dd>
     <dt>Receipts</dt><dd>3</dd>
     <dt>Positions</dt><dd>seq 0 &ndash; 2</dd>
-    <dt>Time span</dt><dd>2026-10-27T16:28:00.135Z &rarr; 2026-10-27T16:28:01.000Z</dd>
+    <dt>Receipts dated</dt><dd>2026-10-27T16:28:00.135Z &rarr; 2026-10-27T16:28:01.000Z</dd>
+    <dt>Anchor time</dt><dd>2026-10-27T16:28:05.000Z</dd>
     <dt>Agents</dt><dd>1</dd>
     <dt>Irreversible</dt><dd>3</dd>
   </dl></div>
@@ -88,8 +89,10 @@
         <dt>Position</dt><dd>seq 2</dd>
         <dt>Attested</dt><dd>2026-10-27T16:28:05.000Z</dd>
         <dt>Authority</dt><dd>C=US, O=DigiCert\, Inc., CN=DigiCert SHA256 RSA4096 Timestamp Responder 2026 1</dd>
-        <dt>Trust anchor</dt><dd>C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Trusted Root G4</dd>
+        <dt>Chain top</dt><dd>C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Trusted Root G4</dd>
+        <dt>Issued by</dt><dd>C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Assured ID Root CA</dd>
         <dt>Fingerprint</dt><dd>33846b545a49c9be4903c60e01713c1bd4e4ef31ea65cd95d69e62794f30b941</dd>
+        
         <dt>In your trust list</dt><dd>NO — confirm independently</dd>
       </dl>
       <p class="note">verified: &#39;C=US, O=DigiCert\, Inc., CN=DigiCert SHA256 RSA4096 Timestamp Responder 2026 1&#39; attests this chain reached seq 2 at 2026-10-27T16:28:05.000Z (authority NOT in your trust list -- confirm you trust it)</p>
@@ -102,30 +105,22 @@
   <h2>Verify this yourself</h2>
   <p class="note">
     <b>This page is a summary, not the evidence.</b> It carries no cryptography and
-    anyone can edit it. The evidence is the JSON bundle it was generated from. To
-    check that bundle independently &mdash; without trusting whoever operates this
-    system, and with no network connection:
+    anyone can edit it. The evidence is the JSON bundle this report was generated from. To check it independently, without trusting whoever operates this system and without a network connection, run the open-source Lacre verifier, lacre-verify (package @lacre/verifier), on that file:
   </p>
-  <pre>npx @lacre/verifier bundle.json --trust &lt;authority-root.pem&gt;</pre>
-  <p class="note">
-    The verifier is MIT licensed, makes no network connections, and shares no code
-    with the software that produced this bundle. It re-derives every hash and
-    re-checks every signature from the bundle contents alone.
-  </p>
+  <pre>lacre-verify bundle.json --trust &lt;authority-root.pem&gt;</pre>
+  <p class="note">&lt;authority-root.pem&gt; is the timestamp authority&#39;s root certificate, obtained from the authority itself and never taken from the bundle. For DigiCert it is DigiCert Trusted Root G4, which DigiCert publishes on its own site. To run the verifier from a source checkout, follow the steps in https://github.com/JaredKlopstein/lacre/blob/main/docs/getting-started.md. Someone technical you trust can run it for you; ask them for the full output.</p>
+  <p class="note">The verifier is MIT licensed, makes no network connections, and shares no code with the software that produced this bundle. It re-derives every hash and re-checks every signature from the bundle contents alone.</p>
 
   <h2>What this does and does not establish</h2>
   <ul>
-    <li>It establishes that the receipts shown are internally consistent and were
-        signed by the registered agent keys.</li>
-    <li><b>It does not yet establish that the history is unaltered.</b> A timestamp token is present and cryptographically sound, but the authority that signed it is <b>not in your trust list</b>, so nothing here rules out that the signer was chosen by whoever produced this bundle. Confirm the fingerprint above against the authority directly, then re-run the verifier with <code>--trust-fingerprint</code>.</li>
-    <li><b>It does not make anyone compliant with any regulation.</b> Lacre
-        produces tamper-evident records that support logging obligations. This is
-        not legal advice.</li>
+    <li>It establishes that the receipts in the bundle are internally consistent and were signed by the agent public keys included in this bundle. Those keys come from the bundle itself: nothing here ties a key to a particular system, person or organization, so ask the producer to show you, separately, which system holds each key.</li>
+    <li><b>It does not yet establish that the history is unaltered. A timestamp token is present and cryptographically sound, but the authority that signed it is not in your trust list, so nothing here rules out that the signer was chosen by whoever produced this bundle. Get the authority&#39;s root certificate from the authority itself and run the verifier again with --trust.</b></li>
+    <li>It does not establish that the actions happened as recorded, or that every action was recorded. Receipts are what the agents chose to record about themselves.</li>
+    <li>It does not make anyone compliant with any regulation. Lacre produces tamper-evident records that support logging obligations. This is not legal advice.</li>
   </ul>
 
   <footer>
-    Lacre &middot; bundle format lacre-bundle-v1 &middot;
-    anchored, authority unverified
+    Lacre &middot; bundle format lacre-bundle-v1 &middot; VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST
   </footer>
 </main>
 </body>

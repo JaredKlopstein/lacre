@@ -86,7 +86,7 @@ It exits `0` and prints:
 
 ```
 ------------------------------------------------------------------------
-VERIFIED / ANCHORED
+VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST
 ------------------------------------------------------------------------
 ...
 ANCHORS
@@ -116,8 +116,8 @@ node packages/verifier/bin/lacre-verify.mjs examples/sample-evidence/evidence.js
   --trust DigiCertTrustedRootG4.crt.pem
 ```
 
-It still exits `0` with `VERIFIED / ANCHORED`, and the anchor now reports
-`trusted by you: yes`. The verifier matches a trust anchor by subject name plus
+It still exits `0`, the verdict becomes `VERIFIED / ANCHORED`, and the anchor
+now reports `trusted by you: yes`. The verifier matches a trust anchor by subject name plus
 public key, as RFC 5280 defines one, so the self-signed root anchors the
 cross-signed copy in the token. It prints the fingerprint of the certificate you
 supplied:
@@ -133,6 +133,13 @@ for DigiCert Trusted Root G4 on its own root certificate page,
 (there it reads `55:2F:7B:DC:...:0A:C8:99:88`), rather than taking it from this
 file. A repository is exactly where an attacker would plant a fingerprint they
 wanted you to trust.
+
+Exit `0` without an authority you trust does not establish who issued the
+timestamp. In a script or CI gate, add `--require-trusted` to the command above:
+it then exits `1` unless an anchor is from an authority you passed with `--trust`.
+And always compare the anchor's `attested time` with the receipt dates the
+verifier prints (`dated`). The anchor proves the record existed, unchanged, at
+that time, and says nothing about what happened to it before then.
 
 Add `--json` to either command for a machine-readable verdict.
 

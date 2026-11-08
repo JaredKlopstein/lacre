@@ -37,7 +37,7 @@ const STEPS = [
   },
   {
     title: 'Verify a real anchored bundle',
-    body: 'The repository ships a genuine bundle of 3 receipts whose chain head was timestamped by DigiCert’s production RFC 3161 authority. This exits 0 with VERIFIED / ANCHORED, and reports that the authority is not yet in your trust list.',
+    body: 'The repository ships a genuine bundle of 3 receipts whose chain head was timestamped by DigiCert’s production RFC 3161 authority. This exits 0 with VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST: the timestamp is sound, but you have not yet said you trust the authority that issued it.',
     command: VERIFY,
   },
   {
@@ -50,7 +50,8 @@ const STEPS = [
         Download the root DigiCert publishes,{' '}
         <a href={DIGICERT_ROOT_G4_PEM}>DigiCert Trusted Root G4 in PEM form</a>, save it in the
         repository root as <code>{DIGICERT_ROOT_G4_FILE}</code>, and pass it with{' '}
-        <code>--trust</code>. The anchor then reports trusted by you: yes, and the verifier prints
+        <code>--trust</code>. The verdict becomes VERIFIED / ANCHORED, the anchor reports trusted by you:
+        yes, and the verifier prints
         your root’s fingerprint as your anchor. It should be <code>{DIGICERT_ROOT_G4}</code>.
         Confirm that on{' '}
         <a href={DIGICERT_ROOTS_PAGE}>DigiCert’s own list of root certificates</a> rather than
@@ -61,21 +62,39 @@ const STEPS = [
   },
 ] as const;
 
+// Every verdict the verifier prints, by the names it prints them with (VERDICT_NAMES in
+// the verifier; test/site-app.test.ts keeps the two lists identical). The site cannot
+// import the verifier, so the names are written out here.
 const VERDICTS = [
   {
     verdict: 'VERIFIED / ANCHORED',
-    exit: 0,
-    meaning: 'Every receipt is intact and correctly signed, and at least one external timestamp commits to the recomputed chain head. Receipts after the highest anchored position are still unanchored, and the verifier warns about them.',
+    exit: '0',
+    can: 'The receipts up to the anchored position have not been changed since the anchor time, as attested by a timestamp authority you chose to trust.',
+    cannot: 'That the actions happened as recorded, that every action was recorded, or anything about the period before the anchor time. Receipts after the anchored position are not covered, and the verifier warns about them.',
+  },
+  {
+    verdict: 'VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST',
+    exit: '0, or 1 with --require-trusted',
+    can: 'That the receipts are internally consistent and the timestamp token is mathematically sound. This is what every first run shows.',
+    cannot: 'Anything that relies on the timestamp. Nothing yet shows who issued it, and a bundle can carry a timestamp from an authority its producer set up. Pass the authority’s root with --trust and run it again.',
   },
   {
     verdict: 'VERIFIED / NOT ANCHORED',
-    exit: 0,
-    meaning: 'Every receipt is intact and correctly signed, but no external timestamp commits to the chain. The record is self-attested.',
+    exit: '0, or 1 with --require-trusted',
+    can: 'That the receipts are internally consistent and correctly signed by the keys in the bundle.',
+    cannot: 'That they were not altered or rebuilt. Whoever held the chain could have produced this record at any time. It is self-attested.',
   },
   {
     verdict: 'VERIFICATION FAILED',
-    exit: 1,
-    meaning: 'At least one receipt is altered, missing or wrongly signed. The verifier names each one and lists the ranges that are still provably intact.',
+    exit: '1',
+    can: 'That the receipts the verifier names were altered, removed, reordered or wrongly signed after they were written. It lists the ranges that are still provably intact.',
+    cannot: 'That the intact ranges can be relied on without further enquiry. Ask whoever produced the bundle for the original.',
+  },
+  {
+    verdict: 'VERIFICATION FAILED / FORGERY DETECTED',
+    exit: '1',
+    can: 'That the history was altered after it was anchored: the receipts no longer produce the chain head the authority timestamped. Treat the bundle as unreliable.',
+    cannot: 'Which version is the original, from this bundle alone. Request the original from whoever produced it.',
   },
 ] as const;
 
@@ -124,19 +143,57 @@ export default function VerifyPage() {
       </section>
       <section aria-label="Verdicts">
         <h2>What the verdict means</h2>
-        <ul>
-          {VERDICTS.map((v) => (
-            <li key={v.verdict}>
-              <h3>
-                {v.verdict} (exit {v.exit})
-              </h3>
-              <p>{v.meaning}</p>
-            </li>
-          ))}
-        </ul>
         <p>
-          An unreadable bundle or an unknown option exits 2 with a usage message and no verdict. See{' '}
-          <Link href="/security">Security</Link> for what a verified chain does and does not prove.
+          The first line of the output is the verdict. The PDF and HTML reports use the same names.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Verdict</th>
+              <th scope="col">Exit</th>
+              <th scope="col">You can conclude</th>
+              <th scope="col">You cannot conclude</th>
+            </tr>
+          </thead>
+          <tbody>
+            {VERDICTS.map((v) => (
+              <tr key={v.verdict}>
+                <th scope="row"><code>{v.verdict}</code></th>
+                <td>{v.exit}</td>
+                <td>{v.can}</td>
+                <td>{v.cannot}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p>
+          An unreadable bundle or an unknown or malformed option exits 2 with a message and no verdict
+          (a JSON error under <code>--json</code>).
+        </p>
+        <h3>Compare the anchor time with the actions</h3>
+        <p>
+          Always compare the anchor time with the dates of the actions you are auditing. An anchor
+          proves the record existed, unchanged, at the anchor time. It says nothing about what happened
+          to the record before then: until that moment, whoever held the chain could have rewritten it.
+          The verifier prints the receipt dates (<code>dated</code>) and the anchor time (
+          <code>attested time</code>) so you can compare them, and warns when the gap is longer than a
+          day.
+        </p>
+        <h3>Exit 0 is not the same as trusted</h3>
+        <p>
+          Exit 0 without an authority you trust does not establish who issued the timestamp. A bundle
+          anchored by an authority its producer set up still verifies and exits 0, as{' '}
+          <code>VERIFIED / ANCHORED / AUTHORITY NOT IN YOUR TRUST LIST</code>. In a script or CI gate,
+          run the step 3 command with <code>--require-trusted</code> added. It then exits 1 unless an
+          anchor is from an authority you passed with <code>--trust</code>.
+        </p>
+        <h3>What a verified bundle does not tell you</h3>
+        <p>
+          It does not tell you that the actions really happened (receipts are what the agents chose to
+          record about themselves), that every action was recorded, or who controls the signing keys.
+          The public keys come from the bundle itself, so ask whoever produced it to show you,
+          separately, which system holds each key. See <Link href="/security">Security</Link> for what
+          a verified chain does and does not prove.
         </p>
       </section>
     </>

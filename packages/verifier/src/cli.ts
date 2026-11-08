@@ -3,8 +3,12 @@
  *
  * Exit codes are the contract for CI and scripts:
  *   0  verified
- *   1  verification FAILED (tampering, forgery, or a broken chain)
+ *   1  verification FAILED (tampering, forgery, or a broken chain), or, only
+ *      with --require-trusted, no anchor from an authority you trust
  *   2  the bundle could not be read at all, or the arguments were invalid
+ *
+ * Under --json every outcome is JSON on stdout: the verdict for 0 and 1, and
+ * { ok: false, error: { code, message } } for 2.
  *
  * The human output is written for someone during an incident who has to decide,
  * quickly, whether they can rely on this. It says what was established and --
@@ -44,6 +48,10 @@ OPTIONS
                       Pin a certificate the token carries by its SHA-256
                       fingerprint (64 hex characters, colons allowed). To trust
                       a root the token omits, pass the root with --trust.
+  --require-trusted   Exit 1 unless the bundle verifies AND at least one anchor
+                      is from an authority you trust. Without it, exit 0 means
+                      the bundle verified, not that you trust who timestamped
+                      it. Use it with --trust in scripts and CI gates.
   --backdate-tolerance-ms <n>
                       Clock skew allowed before a post-anchor receipt claiming
                       an earlier time is treated as backdating (default 300000).
@@ -51,6 +59,7 @@ OPTIONS
 
 EXIT CODES
   0 verified   1 verification failed   2 bundle unreadable or bad arguments
+  (with --require-trusted, an anchor from an untrusted authority is exit 1)
 
 This tool makes no network connections and shares no code with the Lacre
 server or the commercial package. Everything it needs is in the bundle.`;
@@ -66,20 +75,26 @@ export function runVerify(argv: string[], io: VerifyIO = defaultIO): number {
   // A usage error must never fall through to a verdict: a mistyped flag that
   // silently did nothing (say, --trusted for --trust) would report a result
   // checked under options the caller never got.
-  const usage = (message: string): number => {
+  const fail2 = (code: string, message: string): number => {
     io.err(`lacre-verify: ${message}`);
-    if (json) io.out(JSON.stringify({ ok: false, error: { code: 'USAGE', message } }, null, 2));
+    if (json) io.out(JSON.stringify({ ok: false, error: { code, message } }, null, 2));
     return 2;
   };
+  const usage = (message: string): number => fail2('USAGE', message);
 
   const opts: VerifyOptions = {};
   const trustFiles: string[] = [];
   const fingerprints: string[] = [];
   let file: string | null = null;
+  let requireTrusted = false;
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--json') continue;
+    if (a === '--require-trusted') {
+      requireTrusted = true;
+      continue;
+    }
     if (a === '--trust' || a === '--trust-fingerprint' || a === '--backdate-tolerance-ms') {
       const v = argv[i + 1];
       if (v === undefined || v === '' || v.startsWith('--')) return usage(`${a} needs a value. Try --help.`);
@@ -95,7 +110,7 @@ export function runVerify(argv: string[], io: VerifyIO = defaultIO): number {
       } else opts.backdateToleranceMs = Number(v);
     } else if (a.startsWith('--')) {
       return usage(
-        `unknown option '${a}'. Options are --json, --trust, --trust-fingerprint, --backdate-tolerance-ms and --help.`,
+        `unknown option '${a}'. Options are --json, --trust, --trust-fingerprint, --require-trusted, --backdate-tolerance-ms and --help.`,
       );
     } else if (file === null) file = a;
     else return usage(`unexpected argument '${a}'; give exactly one bundle file.`);
@@ -107,20 +122,32 @@ export function runVerify(argv: string[], io: VerifyIO = defaultIO): number {
   try {
     bundle = JSON.parse(readFileSync(file, 'utf8'));
   } catch (err) {
-    io.err(`lacre-verify: could not read '${file}': ${String(err)}`);
-    return 2;
+    return fail2('BUNDLE_UNREADABLE', `could not read '${file}': ${String(err)}`);
   }
 
   const anchors: X509Certificate[] = [];
   for (const f of trustFiles) {
     try {
-      const pem = readFileSync(f, 'utf8');
-      for (const block of pem.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) ?? []) {
-        anchors.push(new X509Certificate(block));
+      const raw = readFileSync(f);
+      const blocks = raw.toString('utf8').match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) ?? [];
+      if (blocks.length) {
+        for (const block of blocks) anchors.push(new X509Certificate(block));
+      } else {
+        // Not PEM. Authorities often serve roots as DER (.crt, .cer), so try that
+        // before reporting that the file holds no certificate at all. Silently
+        // trusting nothing would read as "the authority is untrusted".
+        try {
+          anchors.push(new X509Certificate(raw));
+        } catch {
+          return fail2(
+            'TRUST_FILE_UNREADABLE',
+            `trust file '${f}' holds no certificate: expected a PEM file with a -----BEGIN CERTIFICATE----- ` +
+              `block, or a single DER certificate. Download the authority's root certificate from the authority itself.`,
+          );
+        }
       }
     } catch (err) {
-      io.err(`lacre-verify: could not read trust file '${f}': ${String(err)}`);
-      return 2;
+      return fail2('TRUST_FILE_UNREADABLE', `could not read trust file '${f}': ${String(err)}`);
     }
   }
   if (anchors.length) opts.trustAnchors = anchors;
@@ -128,10 +155,35 @@ export function runVerify(argv: string[], io: VerifyIO = defaultIO): number {
 
   const verdict = verifyBundle(bundle, opts);
 
-  if (json) io.out(JSON.stringify(verdict, null, 2));
-  else io.out(render(verdict, { trustFiles: trustFiles.length > 0, fingerprints: fingerprints.length > 0 }));
+  // Opt-in, so the default exit code never changes under existing callers.
+  const requirement = requireTrusted ? trustedRequirement(verdict) : null;
 
-  return verdict.ok ? 0 : 1;
+  if (json) io.out(JSON.stringify(requirement ? { ...verdict, require_trusted: requirement } : verdict, null, 2));
+  else io.out(render(verdict, { trustFiles: trustFiles.length > 0, fingerprints: fingerprints.length > 0 }, requirement));
+
+  if (!verdict.ok) return 1;
+  return requirement && !requirement.met ? 1 : 0;
+}
+
+interface TrustedRequirement {
+  met: boolean;
+  reason: string | null;
+}
+
+function trustedRequirement(v: BundleVerdict): TrustedRequirement {
+  if (!v.ok) return { met: false, reason: 'the bundle did not verify.' };
+  if (!v.anchored) {
+    return { met: false, reason: 'the bundle has no external anchor, so no authority vouches for it at all.' };
+  }
+  if (!v.anchor_authority_trusted) {
+    return {
+      met: false,
+      reason:
+        'no anchor is from an authority in your trust list. Get the authority\'s root certificate from the ' +
+        'authority itself and pass it with --trust.',
+    };
+  }
+  return { met: true, reason: null };
 }
 
 /** Why an anchor is not trusted, in terms of what the caller actually passed. */
@@ -151,18 +203,23 @@ function untrustedReason(given: { trustFiles: boolean; fingerprints: boolean }):
   return L;
 }
 
-function render(v: BundleVerdict, given: { trustFiles: boolean; fingerprints: boolean }): string {
+function render(
+  v: BundleVerdict,
+  given: { trustFiles: boolean; fingerprints: boolean },
+  requirement: TrustedRequirement | null,
+): string {
   const L: string[] = [];
   const rule = '-'.repeat(72);
 
   L.push(rule);
-  L.push(v.ok ? (v.anchored ? 'VERIFIED / ANCHORED' : 'VERIFIED / NOT ANCHORED') : 'VERIFICATION FAILED');
+  L.push(v.verdict);
   L.push(rule);
   L.push('');
   L.push(v.conclusion);
   L.push('');
   L.push(`chain      ${v.chain_id ?? 'unknown'}`);
   if (v.range) L.push(`range      seq ${v.range.from_seq} to ${v.range.to_seq} (${v.receipts_checked} receipts)`);
+  if (v.receipt_time_range) L.push(`dated      ${v.receipt_time_range.first} to ${v.receipt_time_range.last}`);
 
   if (v.anchors.length) {
     L.push('');
@@ -206,6 +263,12 @@ function render(v: BundleVerdict, given: { trustFiles: boolean; fingerprints: bo
     L.push('');
     L.push('WARNINGS');
     for (const w of v.warnings) L.push(`  - ${w}`);
+  }
+
+  if (requirement && !requirement.met) {
+    L.push('');
+    const reason = requirement.reason ?? '';
+    L.push(`REQUIREMENT NOT MET: --require-trusted. ${reason.charAt(0).toUpperCase()}${reason.slice(1)} Exit 1.`);
   }
 
   L.push('');

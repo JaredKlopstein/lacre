@@ -41,7 +41,8 @@ describe('HTML evidence report', () => {
     const trusted = bundleToHtml(bundle, { trustedFingerprints: [DIGICERT_ROOT_FP] });
     expect(trusted).toContain('<strong>VERIFIED / ANCHORED</strong>');
     expect(trusted).toContain('a timestamp authority you have told this tool to trust');
-    expect(trusted).toContain('authority trusted');
+    // The footer used to carry its own label for this state; it now uses the one name.
+    expect(trusted).toMatch(/<footer>[\s\S]*VERIFIED \/ ANCHORED\s*<\/footer>/);
   });
 
   it('states that the page is not the evidence', () => {

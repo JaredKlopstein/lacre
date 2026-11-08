@@ -5,7 +5,18 @@ import { verifyBundle } from '@lacre/verifier';
 import { exportBundle, bundleToJson } from '../bundle/export.js';
 import { bundleToPdf } from '../bundle/pdf.js';
 import { bundleToHtml } from '../bundle/html.js';
+import { verifyCommand, VERIFY_GUIDE_URL } from '../bundle/report-copy.js';
 import { retryPendingOverage, recordBundleOverage } from '../billing/overage.js';
+
+/** What a recipient runs, by the executable's name, and where the from-source
+ *  steps are. True before and after @lacre/verifier is published to npm. */
+function verifyWith(file: string): string {
+  return (
+    `${verifyCommand(file)} -- lacre-verify is the @lacre/verifier CLI; <authority-root.pem> is the ` +
+    `timestamp authority's root certificate, obtained from the authority itself. To run it from a source ` +
+    `checkout, follow ${VERIFY_GUIDE_URL}`
+  );
+}
 
 /**
  * Registered into core's action registry by importing this module, so the paid
@@ -24,7 +35,7 @@ export const bundleExportAction = defineAction({
     when: 'When someone outside your organisation needs to check what your agents did: an audit, a customer security questionnaire, an incident postmortem, or a regulatory request. Anchor first (anchor.now) so the bundle carries external proof rather than only your own word.',
     whenNot: 'Not for routine internal inspection -- use receipts.query, which is far cheaper. Do not export an unanchored range expecting it to persuade anyone: without an anchor the bundle is self-attested and the verifier will say so in writing.',
     cost: 'Reads and re-serializes every receipt in range, so it is linear in range size and the output is roughly 1KB per receipt. A PDF adds a second or two. On Lacre Cloud, bundles are billed per export on Starter and unlimited on Team.',
-    returns: 'The bundle itself (or a path when --out is given), the range covered, whether it is externally anchored, and the verifier command a recipient should run to check it.',
+    returns: 'The bundle itself (or a path when --out is given), the range covered, whether it is externally anchored, and how a recipient runs the verifier to check it.',
   },
   input: z.object({
     from_seq: z.number().int().nonnegative().optional().describe('First chain position to include. Defaults to the start of the chain.'),
@@ -103,7 +114,7 @@ export const bundleExportAction = defineAction({
       anchor_count: bundle.anchors.length,
       written,
       ...(input.out ? {} : { bundle: bundle as unknown as Record<string, unknown> }),
-      verify_with: `npx @lacre/verifier ${input.out ?? 'bundle.json'} --trust <authority-root.pem>`,
+      verify_with: verifyWith(input.out ?? 'bundle.json'),
       warning: verdict.anchored
         ? null
         : 'This bundle is NOT externally anchored. It proves internal consistency only -- a recipient has ' +
@@ -137,7 +148,7 @@ export const bundleExportAction = defineAction({
       written: [],
       would_write: would,
       would_overwrite: clobbered,
-      verify_with: `npx @lacre/verifier ${input.out ?? 'bundle.json'} --trust <authority-root.pem>`,
+      verify_with: verifyWith(input.out ?? 'bundle.json'),
       warning: clobbered.length
         ? `DRY RUN: nothing was written. ${clobbered.length} existing file(s) WOULD BE OVERWRITTEN: ${clobbered.join(', ')}.`
         : 'DRY RUN: nothing was written.',

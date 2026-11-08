@@ -17,6 +17,7 @@
  */
 import type { Bundle } from '@lacre/verifier';
 import { verifyBundle, type VerifyOptions, type BundleVerdict } from '@lacre/verifier';
+import { VERIFY_STEPS, verifyCommand, verdictTone, anchorTime, establishes } from './report-copy.js';
 
 export interface HtmlOptions extends VerifyOptions {
   title?: string;
@@ -36,19 +37,13 @@ function esc(v: unknown): string {
 export function bundleToHtml(bundle: Bundle, opts: HtmlOptions = {}): string {
   const v = verifyBundle(bundle, opts);
   const title = opts.title ?? 'Lacre Evidence Report';
-  const state = v.ok ? (v.anchored ? 'ok' : 'warn') : 'bad';
-  // An anchor whose authority the reader does not trust is NOT a trusted
-  // anchor, and the headline must not say otherwise. `is_evidence` requires only
-  // that the token is sound and commits to this history -- it deliberately says
-  // nothing about who vouches for the signer.
-  const trustedAnchor = v.anchors.some((a) => a.is_evidence && a.timestamp?.trusted);
-  const heading = v.ok
-    ? v.anchored
-      ? trustedAnchor
-        ? 'Verified — externally anchored'
-        : 'Verified — anchored by an unverified authority'
-      : 'Verified — not anchored'
-    : 'Verification failed';
+  // The headline is the verifier's own verdict name, so the CLI, this page, the
+  // PDF and /verify all call each state the same thing. An anchor whose
+  // authority the reader does not trust has its own name and is never shown as
+  // good news.
+  const state = verdictTone(v);
+  const heading = v.verdict;
+  const anchoredAt = anchorTime(v);
 
   const s = bundle.summary as Record<string, unknown> | undefined;
 
@@ -129,7 +124,8 @@ export function bundleToHtml(bundle: Bundle, opts: HtmlOptions = {}): string {
     <dt>Chain</dt><dd>${esc(bundle.chain_id ?? 'unknown')}</dd>
     <dt>Receipts</dt><dd>${esc(v.receipts_checked)}</dd>
     ${v.range ? `<dt>Positions</dt><dd>seq ${esc(v.range.from_seq)} &ndash; ${esc(v.range.to_seq)}</dd>` : ''}
-    ${s?.time_range ? `<dt>Time span</dt><dd>${esc((s.time_range as { first: string }).first)} &rarr; ${esc((s.time_range as { last: string }).last)}</dd>` : ''}
+    ${v.receipt_time_range ? `<dt>Receipts dated</dt><dd>${esc(v.receipt_time_range.first)} &rarr; ${esc(v.receipt_time_range.last)}</dd>` : ''}
+    ${anchoredAt ? `<dt>Anchor time</dt><dd>${esc(anchoredAt)}</dd>` : ''}
     ${s ? `<dt>Agents</dt><dd>${esc(s.agent_count ?? '—')}</dd>` : ''}
     ${s ? `<dt>Irreversible</dt><dd>${esc(s.irreversible_actions ?? 0)}</dd>` : ''}
   </dl></div>
@@ -149,36 +145,19 @@ export function bundleToHtml(bundle: Bundle, opts: HtmlOptions = {}): string {
   <h2>Verify this yourself</h2>
   <p class="note">
     <b>This page is a summary, not the evidence.</b> It carries no cryptography and
-    anyone can edit it. The evidence is the JSON bundle it was generated from. To
-    check that bundle independently &mdash; without trusting whoever operates this
-    system, and with no network connection:
+    anyone can edit it. ${esc(VERIFY_STEPS.before)}
   </p>
-  <pre>npx @lacre/verifier bundle.json --trust &lt;authority-root.pem&gt;</pre>
-  <p class="note">
-    The verifier is MIT licensed, makes no network connections, and shares no code
-    with the software that produced this bundle. It re-derives every hash and
-    re-checks every signature from the bundle contents alone.
-  </p>
+  <pre>${esc(verifyCommand('bundle.json'))}</pre>
+  <p class="note">${esc(VERIFY_STEPS.after)}</p>
+  <p class="note">${esc(VERIFY_STEPS.independence)}</p>
 
   <h2>What this does and does not establish</h2>
   <ul>
-    <li>It establishes that the receipts shown are internally consistent and were
-        signed by the registered agent keys.</li>
-    <li>${
-      !v.anchored
-        ? '<b>It does NOT establish that the history is unaltered.</b> With no external anchor, the operator could have rebuilt everything and it would still verify exactly like this.'
-        : trustedAnchor
-          ? 'It establishes, via a timestamp authority you have told this tool to trust, that this exact history existed at the attested time and has not been altered since.'
-          : '<b>It does not yet establish that the history is unaltered.</b> A timestamp token is present and cryptographically sound, but the authority that signed it is <b>not in your trust list</b>, so nothing here rules out that the signer was chosen by whoever produced this bundle. Confirm the fingerprint above against the authority directly, then re-run the verifier with <code>--trust-fingerprint</code>.'
-    }</li>
-    <li><b>It does not make anyone compliant with any regulation.</b> Lacre
-        produces tamper-evident records that support logging obligations. This is
-        not legal advice.</li>
+    ${establishes(v).map((b) => `<li>${b.emphasis && b.emphasis !== 'ok' ? `<b>${esc(b.text)}</b>` : esc(b.text)}</li>`).join('\n    ')}
   </ul>
 
   <footer>
-    Lacre &middot; bundle format ${esc(v.format)} &middot;
-    ${v.anchored ? (trustedAnchor ? 'externally anchored, authority trusted' : 'anchored, authority unverified') : 'self-attested'}
+    Lacre &middot; bundle format ${esc(v.format)} &middot; ${esc(v.verdict)}
   </footer>
 </main>
 </body>
@@ -199,8 +178,11 @@ function renderAnchors(v: BundleVerdict): string {
         <dt>Position</dt><dd>seq ${esc(a.seq)}</dd>
         ${a.proven_time ? `<dt>Attested</dt><dd>${esc(a.proven_time)}</dd>` : ''}
         ${a.timestamp?.signer ? `<dt>Authority</dt><dd>${esc(a.timestamp.signer)}</dd>` : ''}
-        ${a.timestamp?.chain.top ? `<dt>Trust anchor</dt><dd>${esc(a.timestamp.chain.top.subject)}</dd>
+        ${a.timestamp?.chain.top ? `<dt>Chain top</dt><dd>${esc(a.timestamp.chain.top.subject)}</dd>
+        <dt>Issued by</dt><dd>${esc(a.timestamp.chain.top.issuer)}</dd>
         <dt>Fingerprint</dt><dd>${esc(a.timestamp.chain.top.fingerprint_sha256)}</dd>` : ''}
+        ${a.timestamp?.trusted_by ? `<dt>Your trust anchor</dt><dd>${esc(a.timestamp.trusted_by.subject)}</dd>
+        <dt>Its fingerprint</dt><dd>${esc(a.timestamp.trusted_by.fingerprint_sha256)}</dd>` : ''}
         <dt>In your trust list</dt><dd>${a.timestamp?.trusted ? 'yes' : 'NO — confirm independently'}</dd>
       </dl>
       <p class="note">${esc(a.note)}</p>
