@@ -64,7 +64,13 @@ certificate, the signed attributes bind the timestamped content, the signer
 carries the `timeStamping` extended key usage, and the digest is the one we
 expected.
 
-`trusted` means a certificate in the chain was in **your** trust list.
+`trusted` means the chain reached **your** trust list: a certificate passed with
+`--trust` whose subject name and public key match a certificate on the verified
+chain (that is how RFC 5280 defines a trust anchor, so a root and a cross-signed
+copy of it are the same anchor), or a certificate on the chain whose SHA-256
+fingerprint you pinned with `--trust-fingerprint`. A fingerprint can only match a
+certificate the verifier holds, so to trust a root the token omits, pass the root
+itself with `--trust`. `trusted_by` names the certificate that matched.
 
 These are different claims and the tool never merges them. A self-signed root
 embedded in a bundle proves nothing — anyone can mint one — so trust only ever

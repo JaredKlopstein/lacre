@@ -95,6 +95,9 @@ describe('lacre-verify bundle mode: usage errors exit 2 without a verdict', () =
     { name: 'a negative tolerance', argv: [SAMPLE, '--backdate-tolerance-ms', '-5'], names: /--backdate-tolerance-ms must be a non-negative integer.*'-5'/ },
     { name: 'a fractional tolerance', argv: [SAMPLE, '--backdate-tolerance-ms', '1.5'], names: /--backdate-tolerance-ms must be a non-negative integer/ },
     { name: 'two bundle paths', argv: [SAMPLE, path('tampered.json')], names: /unexpected argument .*tampered\.json.*exactly one bundle file/ },
+    { name: 'a fingerprint that is not hex', argv: [SAMPLE, '--trust-fingerprint', 'nonsense'], names: /--trust-fingerprint 'nonsense' is not a SHA-256 certificate fingerprint: expected 64 hexadecimal characters/ },
+    { name: 'a fingerprint of the wrong length', argv: [SAMPLE, '--trust-fingerprint', 'abcd'], names: /--trust-fingerprint 'abcd' is not a SHA-256 .*got 4/ },
+    { name: 'a SHA-1 thumbprint', argv: [SAMPLE, '--trust-fingerprint', 'ddfb16cd4931c973a2037d3fc83a4d7d775d05e4'], names: /SHA-1/ },
   ];
 
   for (const c of cases) {
@@ -122,5 +125,44 @@ describe('lacre-verify bundle mode: usage errors exit 2 without a verdict', () =
     expect(r.code).toBe(2);
     expect(r.err).toMatch(/no bundle file given/);
     expect(JSON.parse(r.out)).toMatchObject({ ok: false, error: { code: 'USAGE' } });
+  });
+});
+
+describe('lacre-verify bundle mode: trust anchors', () => {
+  const FIX = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
+  const SELF_SIGNED_G4 = join(FIX, 'digicert-trusted-root-g4.pem');
+  const IMPOSTOR_G4 = join(FIX, 'impostor-trusted-root-g4.pem');
+  const SELF_SIGNED_FP = '552f7bdcf1a7af9e6ce672017f4f12abf77240c78e761ac203d1d9d20ac89988';
+
+  it('trusts the sample bundle under the self-signed G4 root DigiCert publishes', () => {
+    const r = cli([SAMPLE, '--trust', SELF_SIGNED_G4]);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/trusted by you: yes/);
+    // The reader can compare this with DigiCert's published fingerprint.
+    expect(r.out).toContain(SELF_SIGNED_FP);
+    const v = JSON.parse(cli([SAMPLE, '--trust', SELF_SIGNED_G4, '--json']).out) as {
+      anchor_authority_trusted: boolean;
+    };
+    expect(v.anchor_authority_trusted).toBe(true);
+  });
+
+  it('does not trust it under an impostor with the same subject and another key', () => {
+    const r = cli([SAMPLE, '--trust', IMPOSTOR_G4]);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/trusted by you: NO/);
+  });
+
+  it('shows who issued the chain top, so a cross-signed root is visible as one', () => {
+    const r = cli([SAMPLE]);
+    expect(r.out).toMatch(/chain top\s+: .*CN=DigiCert Trusted Root G4/);
+    expect(r.out).toMatch(/issued by\s+: .*CN=DigiCert Assured ID Root CA/);
+  });
+
+  it('explains why a pin of a certificate the token does not carry cannot match', () => {
+    const r = cli([SAMPLE, '--trust-fingerprint', SELF_SIGNED_FP]);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/trusted by you: NO/);
+    expect(r.out).toMatch(/matched no certificate on this chain/);
+    expect(r.out).toMatch(/pass the root certificate itself with --trust/);
   });
 });

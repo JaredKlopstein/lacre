@@ -105,6 +105,142 @@ describe('real timestamp tokens from public authorities', () => {
   });
 });
 
+/**
+ * RFC 5280 section 6.1.1(d): a trust anchor is a subject name plus a public key,
+ * not the exact bytes of one certificate. A root CA can exist as more than one
+ * certificate with the same name and key: DigiCert Trusted Root G4 is both a
+ * self-signed root (the one DigiCert publishes and operating systems ship) and
+ * a certificate cross-signed by DigiCert Assured ID Root CA (the one DigiCert's
+ * timestamp tokens carry). Either must anchor the same chain, and nothing with
+ * the right name but a different key may.
+ *
+ * Fixtures (see fixtures/README.md for provenance):
+ *   digicert-trusted-root-g4.pem               self-signed, from cacerts.digicert.com
+ *   digicert-trusted-root-g4-cross-signed.pem  cross-signed, as carried in digicert.tst
+ *   impostor-trusted-root-g4.pem               same subject bytes, different key
+ */
+describe('trust anchors are matched by subject name plus public key (RFC 5280)', () => {
+  const pem = (name: string) => new X509Certificate(readFileSync(join(FIX, name)));
+  const selfSigned = pem('digicert-trusted-root-g4.pem');
+  const crossSigned = pem('digicert-trusted-root-g4-cross-signed.pem');
+  const impostor = pem('impostor-trusted-root-g4.pem');
+
+  const SELF_SIGNED_FP = '552f7bdcf1a7af9e6ce672017f4f12abf77240c78e761ac203d1d9d20ac89988';
+  const CROSS_SIGNED_FP = '33846b545a49c9be4903c60e01713c1bd4e4ef31ea65cd95d69e62794f30b941';
+
+  it('uses the fixtures it claims to use', () => {
+    // Guard against a fixture swap making every test below vacuous.
+    expect(selfSigned.fingerprint256.replace(/:/g, '').toLowerCase()).toBe(SELF_SIGNED_FP);
+    expect(selfSigned.checkIssued(selfSigned)).toBe(true);
+    expect(crossSigned.fingerprint256.replace(/:/g, '').toLowerCase()).toBe(CROSS_SIGNED_FP);
+    expect(crossSigned.issuer).toMatch(/DigiCert Assured ID Root CA/);
+    for (const c of [crossSigned, impostor]) expect(c.subject).toBe(selfSigned.subject);
+    expect(impostor.publicKey.equals(selfSigned.publicKey)).toBe(false);
+    expect(crossSigned.publicKey.equals(selfSigned.publicKey)).toBe(true);
+  });
+
+  it('trusts the DigiCert chain when given the self-signed G4 root DigiCert publishes', () => {
+    const v = verifyTimestampToken(token('digicert'), { expectedImprint: digest, trustAnchors: [selfSigned] });
+    expect(v.failures).toEqual([]);
+    expect(v.ok).toBe(true);
+    expect(v.trusted).toBe(true);
+    expect(v.chain.complete).toBe(true);
+    expect(v.chain.root?.fingerprint_sha256).toBe(SELF_SIGNED_FP);
+    expect(v.trusted_by?.fingerprint_sha256).toBe(SELF_SIGNED_FP);
+  });
+
+  it('trusts the same chain when given the cross-signed G4 as a PEM', () => {
+    const v = verifyTimestampToken(token('digicert'), { expectedImprint: digest, trustAnchors: [crossSigned] });
+    expect(v.ok).toBe(true);
+    expect(v.trusted).toBe(true);
+    expect(v.trusted_by?.fingerprint_sha256).toBe(CROSS_SIGNED_FP);
+  });
+
+  it('still trusts the chain when the cross-signed G4 is pinned by fingerprint', () => {
+    // Uppercase with colons is how DigiCert and openssl print it.
+    const colons = CROSS_SIGNED_FP.toUpperCase().match(/../g)!.join(':');
+    const v = verifyTimestampToken(token('digicert'), { expectedImprint: digest, trustedFingerprints: [colons] });
+    expect(v.trusted).toBe(true);
+    expect(v.trusted_by?.fingerprint_sha256).toBe(CROSS_SIGNED_FP);
+  });
+
+  it('does NOT trust a certificate with the G4 subject but a different key', () => {
+    const v = verifyTimestampToken(token('digicert'), { expectedImprint: digest, trustAnchors: [impostor] });
+    expect(v.ok).toBe(true); // the token itself is still sound...
+    expect(v.trusted).toBe(false); // ...but the impostor vouches for nothing
+    expect(v.trusted_by).toBeNull();
+    expect(v.chain.complete).toBe(false);
+    expect(v.chain.root).toBeNull();
+  });
+
+  it('does not let an impostor anchor displace the real one', () => {
+    const v = verifyTimestampToken(token('digicert'), {
+      expectedImprint: digest,
+      trustAnchors: [impostor, selfSigned],
+    });
+    expect(v.trusted).toBe(true);
+    expect(v.trusted_by?.fingerprint_sha256).toBe(SELF_SIGNED_FP);
+  });
+
+  it('cannot match a fingerprint of a certificate the verifier never sees', () => {
+    // DigiCert tokens omit the self-signed root, so its fingerprint alone has
+    // nothing to match against. Trusting it would mean trusting a hash of bytes
+    // nobody checked. The fix is to supply the certificate itself.
+    const v = verifyTimestampToken(token('digicert'), { expectedImprint: digest, trustedFingerprints: [SELF_SIGNED_FP] });
+    expect(v.trusted).toBe(false);
+  });
+
+  it('still checks every link: a corrupted intermediate is not rescued by the real root', () => {
+    const t = token('digicert');
+    const intermediate = extractCerts(t).find((c) => /TimeStamping RSA4096 SHA256 2025 CA1/.test(c.subject))!;
+    expect(intermediate).toBeTruthy();
+    const raw = new Uint8Array(intermediate.raw);
+    const at = Buffer.from(t).indexOf(Buffer.from(raw));
+    expect(at).toBeGreaterThan(0);
+    const bad = new Uint8Array(t);
+    bad[at + raw.length - 1] ^= 0xff; // last byte of the intermediate's own signature
+
+    const v = verifyTimestampToken(bad, { expectedImprint: digest, trustAnchors: [selfSigned] });
+    expect(v.trusted).toBe(false);
+    expect(v.chain.complete).toBe(false);
+    expect(v.chain.reason).toMatch(/does not verify under its stated issuer/);
+  });
+});
+
+describe('a malformed fingerprint is rejected, not silently ignored', () => {
+  const bad: { value: string; why: RegExp }[] = [
+    { value: 'nonsense', why: /64 hexadecimal characters/ },
+    { value: 'zz', why: /64 hexadecimal characters/ },
+    { value: '00'.repeat(31), why: /got 62/ },
+    { value: '00'.repeat(33), why: /got 66/ },
+    { value: 'g'.repeat(64), why: /not hexadecimal/ },
+    // A SHA-1 thumbprint is the commonest wrong value to paste.
+    { value: 'DD:FB:16:CD:49:31:C9:73:A2:03:7D:3F:C8:3A:4D:7D:77:5D:05:E4', why: /SHA-1/ },
+  ];
+  for (const b of bad) {
+    it(`rejects '${b.value.slice(0, 24)}'`, () => {
+      expect(() =>
+        verifyTimestampToken(token('digicert'), { expectedImprint: digest, trustedFingerprints: [b.value] }),
+      ).toThrow(b.why);
+    });
+  }
+});
+
+function extractCerts(tokenBytes: Uint8Array): X509Certificate[] {
+  const out: X509Certificate[] = [];
+  const stack = [parseDer(tokenBytes)];
+  while (stack.length) {
+    const n = stack.pop()!;
+    if (n.cls === 2 && n.tagNumber === 0 && n.constructed) {
+      for (const c of n.children ?? []) {
+        try { out.push(new X509Certificate(Buffer.from(c.full))); } catch { /* not a cert */ }
+      }
+    }
+    for (const c of n.children ?? []) stack.push(c);
+  }
+  return out;
+}
+
 function findSelfSigned(tokenBytes: Uint8Array): X509Certificate | null {
   const root = parseDer(tokenBytes);
   const stack = [root];

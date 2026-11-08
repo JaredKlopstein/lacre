@@ -15,22 +15,33 @@ Run it from the root of a source checkout after `pnpm install && pnpm run build`
 `npx @lacre/verifier` works in its place once the package is published to npm.
 
 It will report `VERIFIED / ANCHORED` and print DigiCert as the attesting
-authority — while also telling you the authority is **not in your trust list**,
-because trust has to come from you, not from the bundle. To close that loop, pin
-the root:
+authority, while also telling you the authority is **not in your trust list**,
+because trust has to come from you, not from the bundle.
+
+The certificate at the top of the token's chain is DigiCert Trusted Root G4
+**cross-signed by DigiCert Assured ID Root CA**. Its fingerprint comes from the
+bundle, so do not pin it. To close the loop, download the root DigiCert
+publishes, <https://cacerts.digicert.com/DigiCertTrustedRootG4.crt.pem>, save it
+in the repository root as `DigiCertTrustedRootG4.crt.pem`, and pass it:
 
 ```bash
 node packages/verifier/bin/lacre-verify.mjs examples/sample-evidence/evidence.json \
-  --trust-fingerprint 33846b545a49c9be4903c60e01713c1bd4e4ef31ea65cd95d69e62794f30b941
+  --trust DigiCertTrustedRootG4.crt.pem
 ```
 
 The verdict stays `VERIFIED / ANCHORED`, and the anchor now reports `trusted by
-you: yes`. (Again, `npx @lacre/verifier` works in place of the `node` path
-once the package is published to npm.)
+you: yes`. The verifier matches the anchor by subject name plus public key (RFC
+5280), which is why the self-signed root anchors the cross-signed copy in the
+token. (Again, `npx @lacre/verifier` works in place of the `node` path once the
+package is published to npm.)
 
-That fingerprint is DigiCert Trusted Root G4. Confirm it against DigiCert
-directly rather than taking it from this file — a repository is exactly the kind
-of place an attacker would put a fingerprint they wanted you to trust.
+The verifier prints the SHA-256 fingerprint of the root you supplied as `your
+anchor`. For DigiCert Trusted Root G4 it is
+`552f7bdcf1a7af9e6ce672017f4f12abf77240c78e761ac203d1d9d20ac89988`. Confirm it
+against DigiCert's own list,
+<https://knowledge.digicert.com/general-information/digicert-trusted-root-authority-certificates>,
+rather than taking it from this file. A repository is exactly the kind of place
+an attacker would put a fingerprint they wanted you to trust.
 
 ## Try to break it
 

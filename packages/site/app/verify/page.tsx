@@ -16,12 +16,17 @@ const REPO_DIR = BRAND.repository.slice(BRAND.repository.lastIndexOf('/') + 1);
 // path into another package from site source, so it is joined from its parts.
 const VERIFY = `node ${['packages', 'verifier', 'bin', `${REPO_DIR}-verify.mjs`].join('/')} examples/sample-evidence/evidence.json`;
 
-// SHA-256 fingerprint of DigiCert Trusted Root G4, as printed in the getting-started
-// guide. A public certificate fingerprint, kept in groups so no long hex run sits in source.
+// SHA-256 fingerprint of the self-signed DigiCert Trusted Root G4, as DigiCert lists it
+// on DIGICERT_ROOTS_PAGE. A public certificate fingerprint, kept in groups so no long hex
+// run sits in source.
 const DIGICERT_ROOT_G4 = [
-  '33846b54', '5a49c9be', '4903c60e', '01713c1b',
-  'd4e4ef31', 'ea65cd95', 'd69e6279', '4f30b941',
+  '552f7bdc', 'f1a7af9e', '6ce67201', '7f4f12ab',
+  'f77240c7', '8e761ac2', '03d1d9d2', '0ac89988',
 ].join('');
+const DIGICERT_ROOTS_PAGE =
+  'https://knowledge.digicert.com/general-information/digicert-trusted-root-authority-certificates';
+const DIGICERT_ROOT_G4_PEM = 'https://cacerts.digicert.com/DigiCertTrustedRootG4.crt.pem';
+const DIGICERT_ROOT_G4_FILE = 'DigiCertTrustedRootG4.crt.pem';
 
 // Each block is copied from docs/getting-started.md, sections 1 and 3, and must stay identical.
 const STEPS = [
@@ -36,9 +41,23 @@ const STEPS = [
     command: VERIFY,
   },
   {
-    title: 'Pin the authority you trust',
-    body: 'Trust has to come from you, not from the bundle, because anyone can embed a self-signed root. Pinning DigiCert Trusted Root G4 by its fingerprint makes the anchor report trusted by you: yes. Confirm the fingerprint with DigiCert directly rather than taking it from this page.',
-    command: `${VERIFY} \\\n  --trust-fingerprint ${DIGICERT_ROOT_G4}`,
+    title: 'Trust the authority yourself',
+    body: (
+      <>
+        Trust has to come from you, not from the bundle, because anyone can embed a self-signed
+        root. The certificate at the top of the token is DigiCert Trusted Root G4 cross-signed by
+        DigiCert Assured ID Root CA, so do not pin its fingerprint: it comes from the bundle.
+        Download the root DigiCert publishes,{' '}
+        <a href={DIGICERT_ROOT_G4_PEM}>DigiCert Trusted Root G4 in PEM form</a>, save it in the
+        repository root as <code>{DIGICERT_ROOT_G4_FILE}</code>, and pass it with{' '}
+        <code>--trust</code>. The anchor then reports trusted by you: yes, and the verifier prints
+        your root’s fingerprint as your anchor. It should be <code>{DIGICERT_ROOT_G4}</code>.
+        Confirm that on{' '}
+        <a href={DIGICERT_ROOTS_PAGE}>DigiCert’s own list of root certificates</a> rather than
+        taking it from this page.
+      </>
+    ),
+    command: `${VERIFY} \\\n  --trust ${DIGICERT_ROOT_G4_FILE}`,
   },
 ] as const;
 
@@ -85,7 +104,8 @@ export default function VerifyPage() {
         <h2>Run it from source</h2>
         <p>
           The packages are not published yet, so run the verifier from a source checkout. Every
-          command runs from the repository root, in order, with no edits.
+          command runs from the repository root, in order, with no edits. Step 3 also needs one
+          file you download from DigiCert.
         </p>
         <ol>
           {STEPS.map((step) => (
