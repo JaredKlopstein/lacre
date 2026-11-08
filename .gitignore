@@ -16,3 +16,6 @@ coverage/
 
 # Internal business notes. Never committed - the repo is public.
 internal/
+
+# Playwright run output
+test-results/
