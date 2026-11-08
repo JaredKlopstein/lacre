@@ -6,7 +6,7 @@ import { SIGNUP_PATH } from '../../src/auth/email';
 import { AccountBar } from '../../src/account-bar';
 import { signedInFromCookie } from '../../src/checkout';
 import { CodeBlock } from '../../src/code-block';
-import { BUNDLE_DELIVERY_BUSINESS_DAYS, BUNDLE_FORMAT } from '../../src/plans';
+import { BUNDLE_DELIVERY_BUSINESS_DAYS, BUNDLE_FORMAT, CHAIN_FILE, SIGNING_KEY_FILE } from '../../src/plans';
 
 export const metadata: Metadata = {
   title: 'Welcome',
@@ -24,10 +24,9 @@ const REPO_DIR = BRAND.repository.slice(BRAND.repository.lastIndexOf('/') + 1);
 // any literal path into another package from site source, so it is joined from its parts.
 const CLI = `node ${['packages', 'core', 'bin', `${REPO_DIR}.mjs`].join('/')}`;
 
-// A bundle buyer sends the store's database, which holds receipts and public keys,
-// and never the key file next to it (core's config.ts names both).
-const CHAIN_FILE = `${REPO_DIR}.db`;
-const KEY_FILE = 'agent.key.json';
+// A bundle buyer sends the chain file, never the key file next to it; both names come
+// from src/plans.ts, so /pricing, /checkout and this page name the same files.
+const KEY_FILE = SIGNING_KEY_FILE;
 
 // Each block is copied from docs/getting-started.md, sections 1 and 2, and must stay identical.
 const STEPS = [

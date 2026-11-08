@@ -6,7 +6,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { POST } from '../app/api/auth/magic-link/route.js';
 import { GET as GET_CALLBACK, POST as POST_CALLBACK } from '../app/api/auth/callback/route.js';
-import SignupPage, { metadata } from '../app/signup/page.js';
+import SignupPage, { generateMetadata } from '../app/signup/page.js';
 import { BRAND } from '../src/brand.js';
 import { AUTH_ENV, MAGIC_LINK_PATH, linkBase } from '../src/auth/email.js';
 import {
@@ -199,6 +199,20 @@ describe('launch guard', () => {
     await expectUnavailable(res, 303, 'MAGIC_LINK_ENABLED');
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  // Persona review (Marcus 3): the redirect used to drop ?for=, so a buyer lost the checkout context.
+  it('keeps a known ?for= on the redirect, even when sending is off, and drops anything else', async () => {
+    vi.stubEnv('MAGIC_LINK_ENABLED', '');
+    for (const key of ['checkout', 'account', 'welcome']) {
+      const res = await sendForm({ email: 'ada@example.com', for: key });
+      expect(res.headers.get('location'), key).toBe(`/signup?signup=unavailable&for=${key}`);
+    }
+    for (const value of ['', 'pricing', '/account', 'https://evil.example', '__proto__', 'checkout&x=1']) {
+      const res = await sendForm({ email: 'ada@example.com', for: value });
+      expect(res.headers.get('location'), value).toBe('/signup?signup=unavailable');
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('configuration', () => {
@@ -256,6 +270,15 @@ describe('sending a link', () => {
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toBe('/signup?signup=sent');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps ?for= on the sent and invalid redirects too', async () => {
+    expect((await sendForm({ email: 'ada@example.com', for: 'checkout' })).headers.get('location')).toBe(
+      '/signup?signup=sent&for=checkout',
+    );
+    expect((await sendForm({ email: 'not-an-email', for: 'checkout' })).headers.get('location')).toBe(
+      '/signup?signup=invalid&for=checkout',
+    );
   });
 
   it('answers the same whether or not the address already has an account', async () => {
@@ -744,16 +767,19 @@ describe('signup page', () => {
     expect(input).toContain('required=""');
   });
 
-  it('sets the short title, and takes brand text from BRAND in the description', () => {
+  it('sets the short title, and takes brand text from BRAND in the description', async () => {
+    const metadata = await generateMetadata({ searchParams: Promise.resolve({}) });
     expect(metadata.title).toBe('Sign in or create an account');
     expect(metadata.description).toContain(BRAND.name);
   });
 
   it('shows the outcome it was redirected back with, and nothing for an unknown one', async () => {
-    expect(await render('sent')).toContain('<p role="status">If that address can receive email');
+    expect(await render('sent')).toContain(
+      '<p id="signup-outcome" role="status" tabindex="-1" data-outcome="sent">If that address can receive email',
+    );
     expect(await render('expired')).toContain('no longer valid');
     expect(await render('unavailable')).toContain('not open yet');
-    expect(await render('<script>')).not.toContain('role="status"');
-    expect(await render()).not.toContain('role="status"');
+    expect(await render('<script>')).not.toMatch(/role="(status|alert)"/);
+    expect(await render()).not.toMatch(/role="(status|alert)"/);
   });
 });

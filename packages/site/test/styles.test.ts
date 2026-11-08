@@ -170,25 +170,27 @@ describe('global stylesheet', () => {
     expect(rules.indexOf('@media (scripting: none)')).toBeGreaterThan(rules.indexOf('@media (max-width: 640px)'));
   });
 
-  it('lays out pricing as a card grid that stacks when narrow, with Cloud bordered and no generated badge', async () => {
+  it('lays out pricing as a card grid that stacks when narrow, with the bundle bordered and no generated badge', async () => {
     const grid = block("main > section[aria-label='Plans']");
     expect(grid).toContain('display: grid');
     expect(grid).toContain('grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr))');
     expect(grid).toContain('max-width: none');
-    expect(block("section[aria-label='Plans'] > article[data-tier='cloud']")).toMatch(/border: 2px solid/);
-    // The Early access badge is markup (pricing.test.ts); CSS generates no badge text.
-    expect(rules).not.toMatch(/article\[data-tier='cloud'\]::before/);
+    // The featured border is on the bundle, the offer meant to be on sale, not on off-sale Cloud.
+    expect(block("section[aria-label='Plans'] > article[data-tier='bundle']")).toMatch(/border: 2px solid/);
+    expect(rules).not.toMatch(/article\[data-tier='cloud'\] \{/);
+    // The badge is markup (pricing.test.ts); CSS generates no badge text.
+    expect(rules).not.toMatch(/article\[data-tier='(cloud|bundle)'\]::before/);
     expect(block("section[aria-label='Plans'] > article > p[data-badge]")).toContain('position: absolute');
     expect(block("section[aria-label='Plans'] > article > p[data-cta]")).toContain('margin-top: auto');
     expect(block('details')).toContain('border: 1px solid var(--field-border)');
     expect(block('summary')).toContain('min-height: 2.75rem');
-    expect(block("nav[aria-label='Billing period'] ul")).toContain('border: 1px solid var(--field-border)');
+    expect(block("nav[aria-label='Cloud billing period'] ul")).toContain('border: 1px solid var(--field-border)');
 
     // The selectors above have to match what the pricing page renders.
     const html = renderToStaticMarkup(await PricingPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain('<section aria-label="Plans"><article data-tier="core">');
-    expect(html).toContain('<article data-tier="cloud">');
-    expect(html).toContain('<nav aria-label="Billing period">');
+    expect(html).toContain('<article data-tier="bundle">');
+    expect(html).toContain('<nav aria-label="Cloud billing period">');
   });
 
   it('hides [data-reveal] content only under html[data-reveal-ready] inside prefers-reduced-motion: no-preference', () => {

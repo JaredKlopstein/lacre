@@ -553,10 +553,11 @@ section[aria-label='Proof points'] > ul > li > p:last-child {
   margin-bottom: 0;
 }
 
-/* Pricing: billing toggle */
+/* Pricing: billing toggle. It sits on the Cloud card, the only price it changes, so it
+   fills the card's width rather than a fixed size per option. */
 
-nav[aria-label='Billing period'] ul {
-  display: inline-flex;
+nav[aria-label='Cloud billing period'] ul {
+  display: flex;
   margin: 0 0 var(--space-4);
   padding: var(--space-1);
   list-style: none;
@@ -565,21 +566,21 @@ nav[aria-label='Billing period'] ul {
   background: var(--color-surface);
 }
 
-nav[aria-label='Billing period'] li {
+nav[aria-label='Cloud billing period'] li {
+  flex: 1 1 0;
   margin: 0;
 }
 
-nav[aria-label='Billing period'] a {
-  display: inline-block;
-  min-width: 6rem;
-  padding: var(--space-2) var(--space-4);
+nav[aria-label='Cloud billing period'] a {
+  display: block;
+  padding: var(--space-2) var(--space-3);
   text-align: center;
   border-radius: 999px;
   color: var(--color-text);
   text-decoration: none;
 }
 
-nav[aria-label='Billing period'] a[aria-current='page'] {
+nav[aria-label='Cloud billing period'] a[aria-current='page'] {
   background: var(--color-accent);
   color: var(--color-on-accent);
   font-weight: 600;
@@ -618,7 +619,8 @@ section[aria-label='Plans'] > article > h2 + p {
   line-height: 1.2;
 }
 
-section[aria-label='Plans'] > article ul {
+/* The terms list only; the Cloud card's billing toggle is a list too and keeps its own box. */
+section[aria-label='Plans'] > article > ul {
   padding-left: 1.1rem;
   font-size: 0.95rem;
 }
@@ -628,9 +630,18 @@ section[aria-label='Plans'] > article > p[role='note'] {
   color: var(--color-muted);
 }
 
-/* Cloud keeps its 2px ink border. While off sale it says so in a markup badge (EARLY_ACCESS_LABEL). */
-section[aria-label='Plans'] > article[data-tier='cloud'] {
+/* The bundle, the offer meant to be on sale, is the featured card: a 2px ink border and the
+   one markup badge. Cloud, off sale, says so in its text and has the plain border. */
+section[aria-label='Plans'] > article[data-tier='bundle'] {
   border: 2px solid var(--color-accent);
+}
+
+/* "Bundles open soon" and "Early access": the card's status, before its terms. */
+section[aria-label='Plans'] > article > p[data-status] {
+  padding: var(--space-2) var(--space-3);
+  border-left: 4px solid var(--color-accent);
+  background: var(--color-accent-soft);
+  font-size: 0.95rem;
 }
 
 /* Out of the flow, so every card's title and price sit on the same lines. */
@@ -686,8 +697,35 @@ section[aria-label='Plans'] > article > p[data-cta='primary'] > a:hover {
   border-color: var(--color-accent-strong);
 }
 
+/* The early access list: its own section under the cards, the form in a panel. */
 #waitlist {
+  margin-top: var(--space-8);
+}
+
+#waitlist form {
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+/* The result regions stay in the page so they are announced; they take no room while empty.
+   Scrolled into view with a little room below, not flush with the screen's edge. */
+#waitlist form > div {
+  scroll-margin: var(--space-6);
+}
+
+#waitlist form p[role] {
+  margin: 0;
+}
+
+#waitlist form p[data-result] {
   margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-accent);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  background: var(--color-accent-soft);
 }
 
 /* Disclosure accordion, shared by the pricing FAQ and the waitlist. */
@@ -884,14 +922,25 @@ section[aria-label='Limits'] > h2 {
   }
 }
 
-/* Sign in: the signup form and the confirm page share one layout. */
+/* Sign in: the signup form and the confirm page share one layout. The Enterprise contact
+   form's outcome uses the same callout. Errors are role="alert", the rest role="status". */
 
-section[aria-label='Sign in'] p[role='status'] {
+section[aria-label='Sign in'] p[role='status'],
+section[aria-label='Sign in'] p[role='alert'],
+section[aria-label='Contact'] p[data-outcome] {
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-accent);
   border-left-width: 4px;
   border-radius: var(--radius);
   background: var(--color-accent-soft);
+}
+
+/* An invalid field gets a heavier edge as well as aria-invalid and the message naming it. */
+input:not([type='hidden']):not([type='submit']):not([type='checkbox']):not([type='radio'])[aria-invalid='true'],
+select[aria-invalid='true'],
+textarea[aria-invalid='true'] {
+  border-width: 2px;
+  border-color: var(--color-text);
 }
 
 section[aria-label='Sign in'] form {

@@ -1,11 +1,14 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BRAND } from '../../src/brand';
+import { bundleSale } from '../../src/bundle-sale';
 import {
   BILLING_PARAM,
   BILLINGS,
+  BUNDLE_CLOSED_LINE,
   BUNDLE_DEFINITION,
   BUNDLE_FULFILMENT,
+  BUNDLE_OPENS_SOON,
   BUNDLE_TODAY_ID,
   EARLY_ACCESS_LABEL,
   priceCards,
@@ -13,7 +16,7 @@ import {
   pricingFaq,
   type Billing,
 } from '../../src/plans';
-import { WaitlistForm } from './waitlist-form';
+import { BUNDLE_WAITLIST_NEED, WAITLIST_NEED, WaitlistForm } from './waitlist-form';
 import { WAITLIST_ID, WaitlistOpen } from './waitlist-open';
 
 export const metadata: Metadata = {
@@ -28,6 +31,7 @@ const BILLING_HREFS: Record<Billing, string> = {
   monthly: '/pricing',
   annual: `/pricing?${BILLING_PARAM}=annual`,
 };
+const WAITLIST_HEADING_ID = 'waitlist-heading';
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -36,6 +40,8 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const billing: Billing = params[BILLING_PARAM] === 'annual' ? 'annual' : 'monthly';
   // A cancelled Stripe checkout returns here with ?checkout=cancelled.
   const cancelled = params.checkout === 'cancelled';
+  // Read on each request, so the bundle opens by itself once checkout, sign-in and the Terms are ready.
+  const sale = bundleSale();
 
   return (
     <>
@@ -44,30 +50,38 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
         {cancelled && <p role="status">Checkout cancelled, nothing was charged.</p>}
         <p>
           Writing receipts and verifying them stays free on every plan. You pay for evidence a third
-          party can check: anchored bundles today (<a href={`#${BUNDLE_TODAY_ID}`}>how a bundle is made today</a>),
+          party can check: anchored evidence bundles (<a href={`#${BUNDLE_TODAY_ID}`}>how a bundle is made today</a>),
           and later Cloud to run the collector and anchoring for you.
         </p>
         <p data-definition="evidence-bundle">{BUNDLE_DEFINITION}</p>
-        <nav aria-label="Billing period">
-          <ul>
-            {BILLINGS.map((b) => (
-              <li key={b}>
-                <Link href={BILLING_HREFS[b]} aria-current={b === billing ? 'page' : undefined}>
-                  {BILLING_LABELS[b]}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
       </section>
       <section aria-label="Plans">
-        {priceCards(billing).map((card) => (
+        {priceCards(billing, { bundleOpen: sale.open }).map((card) => (
           <article key={card.id} data-tier={card.id}>
-            {/* Off-sale plans say so in a badge; no card is ever marked "recommended". */}
-            {card.offSale && <p data-badge>{EARLY_ACCESS_LABEL}</p>}
             <h2>{card.title}</h2>
             <p>{card.price}</p>
+            {/* Only the bundle, the offer meant to be on sale, carries a badge; no card is ever "recommended". */}
             {card.priceNote && <p data-price-note>{card.priceNote}</p>}
+            {card.badge && <p data-badge>{card.badge}</p>}
+            {card.id === 'cloud' && (
+              // The only price the period changes is Cloud's, so the toggle lives on its card.
+              <nav aria-label="Cloud billing period">
+                <ul>
+                  {BILLINGS.map((b) => (
+                    <li key={b}>
+                      <Link href={BILLING_HREFS[b]} scroll={false} aria-current={b === billing ? 'page' : undefined}>
+                        {BILLING_LABELS[b]}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            )}
+            {card.opensSoon && (
+              <p data-status="opens-soon">
+                <strong>{BUNDLE_OPENS_SOON}</strong>: {BUNDLE_CLOSED_LINE}
+              </p>
+            )}
             {card.offSale && (
               <>
                 <p data-status="early-access">
@@ -86,21 +100,23 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
             <p data-cta={card.id === 'bundle' ? 'primary' : 'secondary'}>
               <Link href={card.cta.href}>{card.cta.label}</Link>
             </p>
-            {card.id === 'cloud' && (
-              <div id={WAITLIST_ID}>
-                {/* Collapsed so the card stays the size of the others; the form is in the HTML either way. */}
-                <details>
-                  <summary>Join the early access list</summary>
-                  <WaitlistForm />
-                </details>
-              </div>
-            )}
           </article>
         ))}
       </section>
       <section aria-labelledby={BUNDLE_TODAY_ID}>
         <h2 id={BUNDLE_TODAY_ID}>How a bundle is made today</h2>
         <p>{BUNDLE_FULFILMENT}</p>
+      </section>
+      {/* Its own section under the cards, so opening it never stretches the grid. */}
+      <section id={WAITLIST_ID} aria-labelledby={WAITLIST_HEADING_ID}>
+        <h2 id={WAITLIST_HEADING_ID}>Join the early access list</h2>
+        <p>
+          {sale.open
+            ? 'Cloud is in early access. Leave your details and we will email you when it opens.'
+            : 'Evidence bundles and Cloud are not open yet. Leave your details and we will email you when they open.'}{' '}
+          No payment details are asked for.
+        </p>
+        <WaitlistForm need={sale.open ? WAITLIST_NEED : BUNDLE_WAITLIST_NEED} />
       </section>
       <section aria-labelledby="faq">
         <h2 id="faq">Questions</h2>

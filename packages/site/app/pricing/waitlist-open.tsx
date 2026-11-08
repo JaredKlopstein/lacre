@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 
-/** The fragment the Cloud card's button and WAITLIST_HREF point at. */
+/** The fragment the waitlist buttons and WAITLIST_HREF point at: the waitlist section under the cards. */
 export const WAITLIST_ID = 'waitlist';
 
 /** Whether a location hash, or a link's href, targets the waitlist. */
@@ -10,19 +10,20 @@ export function targetsWaitlist(hashOrHref: string | null | undefined): boolean 
   return typeof hashOrHref === 'string' && hashOrHref.endsWith(`#${WAITLIST_ID}`);
 }
 
-/** Open the waitlist's <details> and put focus in its first field. */
+/** Bring the waitlist section into view and put focus in its first field. */
 function openWaitlist(): void {
-  const details = document.querySelector<HTMLDetailsElement>(`#${WAITLIST_ID} details`);
-  if (!details) return;
-  details.open = true;
-  details.querySelector<HTMLElement>('input, select, textarea')?.focus();
+  const section = document.getElementById(WAITLIST_ID);
+  if (!section) return;
+  section.scrollIntoView({ block: 'start' });
+  section.querySelector<HTMLElement>('input, select, textarea')?.focus({ preventScroll: true });
 }
 
 /**
- * `:target` cannot open a <details>, so this opens the waitlist when the page
- * loads at /pricing#waitlist, when the hash changes to it, and when a link to it
- * is followed. Next's <Link> changes the hash with pushState, which fires no
- * hashchange, so link clicks are watched too. Renders nothing.
+ * Puts focus in the waitlist's first field when the page loads at
+ * /pricing#waitlist, when the hash changes to it, and when a link to it is
+ * followed, so a keyboard user lands in the form rather than above it. Next's
+ * <Link> changes the hash with pushState, which fires no hashchange, so link
+ * clicks are watched too. Renders nothing.
  */
 export function WaitlistOpen() {
   useEffect(() => {

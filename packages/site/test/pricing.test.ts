@@ -9,7 +9,11 @@ import { SIGNUP_PATH } from '../src/auth/email.js';
 import { ACCOUNT_PATH, CHECKOUT_PAGE_PATH } from '../src/checkout.js';
 import {
   BUNDLE_DEFINITION,
+  BUNDLE_DELIVERY_BUSINESS_DAYS,
   BUNDLE_FORMAT,
+  CHAIN_FILE,
+  SIGNING_KEY_FILE,
+  bundleTerms,
   EARLY_ACCESS_LABEL,
   OFF_SALE_PLANS,
   WAITLIST_HREF,
@@ -177,17 +181,19 @@ describe('Cloud in early access (#95)', () => {
       const c = card(await render(billing), 'cloud');
       expect(c.html).toMatch(/<p data-status="early-access"><strong>Early access<\/strong>: not on sale yet\./);
       expect(c.html).toContain('<h3>Planned, not available yet</h3>');
-      expect(c.html.indexOf('<h3>')).toBeLessThan(c.html.indexOf('<ul>'));
+      // The terms list comes after the heading; the billing toggle's own list sits above both.
+      expect(c.html.indexOf('<h3>')).toBeLessThan(c.html.lastIndexOf('<ul>'));
     }
   });
 
-  it('has no checkout button, form or link on the Cloud card, only the waitlist link and form (#129)', async () => {
+  it('has no checkout button, form or link on the Cloud card: only its billing toggle and one waitlist link', async () => {
     for (const billing of [undefined, 'annual']) {
       const c = card(await render(billing), 'cloud');
-      expect(hrefs(c.html)).toEqual(['/pricing#waitlist']);
+      // Persona review: the waitlist form moved under the cards, so the card no longer
+      // carries a second waitlist control (#129's form is now in #waitlist below).
+      expect(hrefs(c.html)).toEqual(['/pricing', '/pricing?billing=annual', '/pricing#waitlist']);
       expect(c.html).not.toMatch(/\/checkout/);
-      expect(c.html.match(/<form\b[^>]*>/g)).toEqual(['<form aria-label="Cloud early access waitlist">']);
-      expect(c.html.match(/<button\b/g)).toHaveLength(1);
+      expect(c.html).not.toMatch(/<form\b|<button\b|<details\b/);
     }
   });
 
@@ -216,9 +222,10 @@ describe('calls to action (#94)', () => {
       const ctas = Object.fromEntries(
         cards(html).map((c) => [c.id, links(c.html).filter((l) => l.label !== 'Monthly' && l.label !== 'Annual')]),
       );
+      // No checkout, sign-in or legal facts in the test environment, so the bundle opens soon (bundle-sale.test.ts has both states).
       expect(ctas).toEqual({
         core: [{ label: 'Start free', href: getStarted }],
-        bundle: [{ label: 'Buy a bundle', href: '/checkout' }],
+        bundle: [{ label: 'Tell me when bundles open', href: '/pricing#waitlist' }],
         cloud: [{ label: 'Join the waitlist', href: '/pricing#waitlist' }],
         enterprise: [{ label: 'Contact the team', href: '/enterprise' }],
       });
@@ -228,10 +235,15 @@ describe('calls to action (#94)', () => {
     }
   });
 
-  it('points the Bundle button straight at /checkout', async () => {
+  it('points the Bundle button straight at /checkout while bundles are on sale, and at the waitlist until then', async () => {
     expect(resolves(CHECKOUT_PAGE_PATH)).toBe(true);
-    expect(priceCards('monthly').find((c) => c.id === 'bundle')!.cta.href).toBe(CHECKOUT_PAGE_PATH);
-    expect(hrefs(card(await render(), 'bundle').html)).toEqual([CHECKOUT_PAGE_PATH]);
+    const bundleCta = (bundleOpen?: boolean) =>
+      priceCards('monthly', bundleOpen === undefined ? {} : { bundleOpen }).find((c) => c.id === 'bundle')!.cta;
+    expect(bundleCta(true)).toEqual({ label: 'Buy a bundle', href: CHECKOUT_PAGE_PATH });
+    expect(bundleCta(false)).toEqual({ label: 'Tell me when bundles open', href: WAITLIST_HREF });
+    // Closed unless the caller says it is open.
+    expect(bundleCta()).toEqual(bundleCta(false));
+    expect(hrefs(card(await render(), 'bundle').html)).toEqual([WAITLIST_HREF]);
   });
 
   it('points the Cloud button at /pricing#waitlist and never at checkout, monthly or annual', async () => {
@@ -239,9 +251,11 @@ describe('calls to action (#94)', () => {
       const cta = priceCards(billing).find((c) => c.id === 'cloud')!.cta;
       expect(cta).toEqual({ label: 'Join the waitlist', href: '/pricing#waitlist' });
       const html = card(await render(billing), 'cloud').html;
-      expect(hrefs(html)).toEqual(['/pricing#waitlist']);
-      // No link or form on the Cloud card may go to checkout.
-      expect(html).not.toMatch(/(?:href|action)="[^"]*(?:checkout|billing=|interval=)/);
+      expect(hrefs(html).filter((h) => !h.startsWith('/pricing?') && h !== '/pricing')).toEqual(['/pricing#waitlist']);
+      // No link or form on the Cloud card may go to checkout. Its billing toggle only reloads /pricing.
+      const withoutToggle = html.replace(/<nav aria-label="Cloud billing period">[\s\S]*?<\/nav>/, '');
+      expect(withoutToggle).not.toMatch(/(?:href|action)="[^"]*(?:checkout|billing=|interval=)/);
+      expect(html).not.toMatch(/(?:href|action)="[^"]*(?:checkout|interval=)/);
       expect(html).not.toMatch(/name="(?:plan|interval|kind)"/);
     }
   });
@@ -250,18 +264,22 @@ describe('calls to action (#94)', () => {
     for (const id of ['core', 'bundle', 'cloud', 'enterprise'] as const) {
       expect(cardCta(id, true)).toEqual({ label: 'Join the waitlist', href: WAITLIST_HREF });
     }
-    for (const c of [...priceCards('monthly'), ...priceCards('annual')]) {
+    // With bundles on sale, only an off-sale card points at the waitlist.
+    for (const c of [...priceCards('monthly', { bundleOpen: true }), ...priceCards('annual', { bundleOpen: true })]) {
       if (c.offSale) expect(c.cta.href).toBe(WAITLIST_HREF);
       else expect(c.cta.href).not.toBe(WAITLIST_HREF);
     }
   });
 
-  it('renders the waitlist form inside an element with id="waitlist"', async () => {
+  it('renders the waitlist form in its own section with id="waitlist", under the cards', async () => {
     for (const billing of [undefined, 'annual']) {
       const html = await render(billing);
       expect(html.match(/\bid="waitlist"/g)).toHaveLength(1);
-      // Inside a collapsed <details> since 8/9; still in the HTML, inside the Cloud card.
-      expect(html).toMatch(/<div id="waitlist"><details><summary>[^<]+<\/summary><form aria-label="Cloud early access waitlist"/);
+      // Persona review: out of the Cloud card and its <details>, so opening it never stretches the grid.
+      expect(html).toMatch(
+        /<section id="waitlist" aria-labelledby="waitlist-heading"><h2 id="waitlist-heading">Join the early access list<\/h2><p>[^<]+<\/p><form aria-label="Early access waitlist"/,
+      );
+      expect(html.indexOf('id="waitlist"')).toBeGreaterThan(html.indexOf('</section>', html.indexOf('aria-label="Plans"')));
     }
   });
 
@@ -393,6 +411,22 @@ describe('pricing content (#100)', () => {
     expect(bundle.html).not.toMatch(/will not read JSON|whole point/);
   });
 
+  it('says on the bundle card what a buyer needs, sends, gets back and when', async () => {
+    const terms = card(await render(), 'bundle').terms;
+    const has = (pattern: RegExp) => expect(terms.some((t) => pattern.test(t)), String(pattern)).toBe(true);
+    has(new RegExp(`^You need ${BRAND.name} Core running from source and recording your agent’s receipts`));
+    has(/^Covers the receipts already recorded when the bundle is made, and is timestamped then$/);
+    // "Chain file" is defined where it first appears, and the signing key is never asked for.
+    has(new RegExp(`^You send your chain file, ${CHAIN_FILE.replace('.', '\\.')}: the database Core keeps your receipts and agents’ public keys in\\. Never your signing key \\(${SIGNING_KEY_FILE.replace(/\./g, '\\.')}\\)$`));
+    has(/^You get back your chain head timestamped by a public RFC 3161 authority/);
+    has(new RegExp(`emailed within ${BUNDLE_DELIVERY_BUSINESS_DAYS} business days of receiving your chain file$`));
+    expect(CHAIN_FILE).toBe(`${BRAND.repository.split('/').at(-1)}.db`);
+    expect(bundleTerms()).toEqual(terms);
+    // The first "chain file" on the page is the one that says what it is.
+    const html = unescape(await render());
+    expect(html.indexOf('chain file')).toBe(html.indexOf(`chain file, ${CHAIN_FILE}: the database`));
+  });
+
   it('answers the FAQ in terms the cards already use', async () => {
     const html = unescape(await render());
     const faq = pricingFaq();
@@ -419,8 +453,9 @@ describe('pricing content (#100)', () => {
     const note = '<p role="status">Checkout cancelled, nothing was charged.</p>';
     expect(await render(undefined, { checkout: 'cancelled' })).toContain(note);
     expect(await render('annual', { checkout: 'cancelled' })).toContain(note);
-    expect(await render()).not.toContain('role="status"');
-    expect(await render(undefined, { checkout: '<script>' })).not.toContain('role="status"');
+    // The waitlist's own live region is always in the page (empty), so look for the note itself.
+    expect(await render()).not.toContain('Checkout cancelled');
+    expect(await render(undefined, { checkout: '<script>' })).not.toContain('Checkout cancelled');
   });
 
   it('gives no card a "Most popular" badge', async () => {
@@ -430,11 +465,20 @@ describe('pricing content (#100)', () => {
     }
   });
 
-  it('badges the off-sale Cloud card Early access in markup, and nothing else (8/9)', async () => {
+  it('badges the bundle, the offer meant to be on sale, in markup after its price, and nothing else', async () => {
+    // Persona review: the featured border and badge moved from off-sale Cloud to the bundle.
     for (const billing of [undefined, 'annual']) {
       const html = await render(billing);
-      expect(card(html, 'cloud').html.startsWith(`<p data-badge="true">${EARLY_ACCESS_LABEL}</p><h2>`)).toBe(true);
+      const bundle = card(html, 'bundle');
+      expect(bundle.html).toContain(`<h2>Evidence bundle</h2><p>${bundle.price}</p><p data-badge="true">Opens soon</p>`);
       expect(html.match(/data-badge/g)).toHaveLength(1);
+      // Cloud still says Early access, in its status line rather than a pill.
+      expect(card(html, 'cloud').html).not.toContain('data-badge');
+      expect(card(html, 'cloud').html).toContain(`<strong>${EARLY_ACCESS_LABEL}</strong>`);
+    }
+    for (const [bundleOpen, badge] of [[true, 'Available now'], [false, 'Opens soon']] as const) {
+      const cards = priceCards('monthly', { bundleOpen });
+      expect(cards.filter((c) => c.badge).map((c) => [c.id, c.badge])).toEqual([['bundle', badge]]);
     }
     const css = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8');
     expect(css).not.toMatch(/recommended|most popular/i);
@@ -449,23 +493,27 @@ describe('pricing content (#100)', () => {
     }
   });
 
-  it('keeps the waitlist form in the Cloud card, collapsed in a <details> (8/9)', async () => {
-    const cloudCard = card(await render(), 'cloud').html;
-    expect(cloudCard).toMatch(
-      /<div id="waitlist"><details><summary>Join the early access list<\/summary><form aria-label="Cloud early access waitlist"/,
-    );
-    expect(cloudCard).not.toMatch(/<details[^>]* open/);
+  it('scopes the Monthly/Annual toggle to the Cloud card, the only price it changes', async () => {
+    for (const billing of [undefined, 'annual']) {
+      const html = await render(billing);
+      expect(html.match(/<nav aria-label="Cloud billing period">/g)).toHaveLength(1);
+      expect(card(html, 'cloud').html).toContain('<nav aria-label="Cloud billing period">');
+      expect(html).not.toContain('aria-label="Billing period"');
+    }
   });
 
-  it('opens the waitlist for #waitlist links and hashes, and nothing else (8/9)', () => {
+  it('prefills the waitlist for bundles and Cloud while bundles are closed', async () => {
+    expect(unescape(await render())).toMatch(/<textarea\b[^>]*name="need"[^>]*>Evidence bundle and Cloud early access waitlist<\/textarea>/);
+  });
+
+  it('focuses the waitlist for #waitlist links and hashes, and nothing else', () => {
     expect(WAITLIST_HREF.endsWith(`#${WAITLIST_ID}`)).toBe(true);
     for (const yes of ['#waitlist', '/pricing#waitlist', WAITLIST_HREF]) expect(targetsWaitlist(yes), yes).toBe(true);
     for (const no of ['', '#faq', '/pricing', null, undefined, '#waitlist-old']) expect(targetsWaitlist(no), String(no)).toBe(false);
     const src = readFileSync(new URL('../app/pricing/waitlist-open.tsx', import.meta.url), 'utf8');
     expect(src).toMatch(/^'use client';\n/);
     expect(src).toContain("addEventListener('hashchange'");
-    expect(src).toContain('.focus()');
-    expect(src).toContain('details.open = true');
+    expect(src).toContain('.focus(');
   });
 });
 

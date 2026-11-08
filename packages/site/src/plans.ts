@@ -41,13 +41,28 @@ export const BUNDLE_DELIVERY_BUSINESS_DAYS = 2;
 /** The id of the pricing section that says how a bundle is made today. */
 export const BUNDLE_TODAY_ID = 'bundle-today';
 
+/** The repository's last path segment, which core names its home directory and store after. */
+export const REPO_DIR = BRAND.repository.slice(BRAND.repository.lastIndexOf('/') + 1);
+
+/**
+ * The chain file a bundle buyer sends: core's store database, which holds the
+ * receipts and the agents' public keys. The signing key is the file next to it
+ * and is never sent (core's config.ts names both).
+ */
+export const CHAIN_FILE = `${REPO_DIR}.db`;
+export const SIGNING_KEY_FILE = 'agent.key.json';
+
+/** The bundle while it cannot be bought here yet (src/bundle-sale.ts decides). */
+export const BUNDLE_OPENS_SOON = 'Bundles open soon';
+export const BUNDLE_CLOSED_LINE = 'Checkout is not open yet, so nothing can be bought or charged here today.';
+
 /**
  * How a bundle is made today, while there is no self-serve path: the buyer sends
  * their chain file, which holds receipts and public keys but never a signing key,
  * and gets the anchored bundle back by email.
  */
 export const BUNDLE_FULFILMENT =
-  'After checkout we email you to ask for your chain file. It holds your receipts and your agents’ public keys; ' +
+  `After checkout we email you to ask for your chain file, ${CHAIN_FILE}. It holds your receipts and your agents’ public keys; ` +
   'your signing key stays with you and we never ask for it. We timestamp the head of that chain with a public ' +
   `RFC 3161 authority and email the bundle back within ${BUNDLE_DELIVERY_BUSINESS_DAYS} business days of receiving the file: ` +
   `${BUNDLE_FORMAT}. The timestamp proves the chain existed when we anchored it, not earlier.`;
@@ -78,6 +93,10 @@ export interface PriceCard {
   readonly terms: readonly string[];
   /** Off-sale cards: their terms are planned features, and they have no checkout. */
   readonly offSale?: boolean;
+  /** The bundle while it cannot be bought here yet: it says so and points at the waitlist. */
+  readonly opensSoon?: boolean;
+  /** A short pill on the card. Only the bundle, the offer meant to be on sale, carries one. */
+  readonly badge?: string;
   /** The card's one button. Off-sale cards always get the waitlist, never checkout. */
   readonly cta: CallToAction;
 }
@@ -90,6 +109,7 @@ const ON_SALE_CTAS: Record<CardId, CallToAction> = {
 };
 
 const WAITLIST_CTA: CallToAction = { label: 'Join the waitlist', href: WAITLIST_HREF };
+const BUNDLE_SOON_CTA: CallToAction = { label: 'Tell me when bundles open', href: WAITLIST_HREF };
 
 /** A card's button, from its off-sale flag first and its id second. */
 export function cardCta(id: CardId, offSale: boolean): CallToAction {
@@ -97,7 +117,32 @@ export function cardCta(id: CardId, offSale: boolean): CallToAction {
 }
 
 function withCta(card: Omit<PriceCard, 'cta'>): PriceCard {
+  if (card.opensSoon) return { ...card, cta: BUNDLE_SOON_CTA };
   return { ...card, cta: cardCta(card.id, card.offSale === true) };
+}
+
+export interface CardOptions {
+  /** Whether a bundle can be bought here now (src/bundle-sale.ts). Closed unless said otherwise. */
+  readonly bundleOpen?: boolean;
+}
+
+/**
+ * The bundle card's terms: what a buyer needs first, what a bundle covers, what
+ * they send, what they get back and when.
+ */
+export function bundleTerms(): string[] {
+  return [
+    'Pay as you go, no subscription',
+    `You need ${BRAND.name} Core running from source and recording your agent’s receipts first`,
+    'Covers the receipts already recorded when the bundle is made, and is timestamped then',
+    // The term's first use on /pricing and /checkout, so it says what the file is.
+    `You send your chain file, ${CHAIN_FILE}: the database Core keeps your receipts and agents’ public keys in. ` +
+      `Never your signing key (${SIGNING_KEY_FILE})`,
+    'You get back your chain head timestamped by a public RFC 3161 authority, in an archive an auditor verifies offline',
+    BUNDLE_FORMAT,
+    `Made by hand today: emailed within ${BUNDLE_DELIVERY_BUSINESS_DAYS} business days of receiving your chain file`,
+    'The timestamp proves the chain existed when it was anchored, not earlier',
+  ];
 }
 
 const usd = (amount: number) => `$${amount}`;
@@ -227,7 +272,7 @@ export function pricingFaq(plan: Plan = PLANS.cloud): FaqEntry[] {
   ];
 }
 
-export function priceCards(billing: Billing): PriceCard[] {
+export function priceCards(billing: Billing, { bundleOpen = false }: CardOptions = {}): PriceCard[] {
   const { free, cloud, enterprise } = PLANS;
   const cards: Omit<PriceCard, 'cta'>[] = [
     {
@@ -241,13 +286,9 @@ export function priceCards(billing: Billing): PriceCard[] {
       id: 'bundle',
       title: 'Evidence bundle',
       price: `${usd(PAYG_BUNDLE_PRICE_USD)} each`,
-      terms: [
-        'Pay as you go, no subscription',
-        'Your chain head timestamped by a public RFC 3161 authority',
-        'A self-contained archive an auditor verifies offline',
-        BUNDLE_FORMAT,
-        'The timestamp proves the chain existed when it was anchored, not earlier',
-      ],
+      terms: bundleTerms(),
+      badge: bundleOpen ? 'Available now' : 'Opens soon',
+      ...(bundleOpen ? {} : { opensSoon: true }),
     },
     {
       id: 'cloud',

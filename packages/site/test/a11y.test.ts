@@ -79,7 +79,8 @@ describe('signup: the email field and its outcome', () => {
     expect(attr(email!, 'aria-invalid')).toBe('true');
     const describedBy = attr(email!, 'aria-describedby');
     expect(describedBy).toBeTruthy();
-    expect(html).toMatch(new RegExp(`<p id="${describedBy}" role="status">That does not look like an email address`));
+    // An error in what was typed is an alert (persona review, Sam 1).
+    expect(html).toMatch(new RegExp(`<p id="${describedBy}" role="alert" tabindex="-1" data-outcome="invalid">That does not look like an email address`));
   });
 
   it.each(SIGNUP_OUTCOMES.filter((o) => o !== 'invalid'))('"%s" marks no field invalid', async (outcome) => {
@@ -96,18 +97,32 @@ describe('signup: the email field and its outcome', () => {
 describe('enterprise: the contact fields and their outcome', () => {
   const FIELDS = ['contact-name', 'contact-email', 'contact-company', 'contact-fleet', 'contact-need'] as const;
 
-  it('invalid details mark every visible field invalid and describe each with the message', async () => {
-    const html = await enterprise('invalid');
-    const tags = fieldTags(html, FIELDS);
-    const ids = new Set(tags.map((t) => attr(t, 'aria-describedby')));
-    for (const tag of tags) expect(attr(tag, 'aria-invalid'), tag).toBe('true');
-    expect(ids.size).toBe(1);
-    const [id] = [...ids];
-    expect(html).toMatch(new RegExp(`<p id="${id}" role="status">Some details were missing or not valid`));
+  // Persona review (Sam 8): only the fields the route names in ?fields= are marked, and the message names them.
+  const invalidWith = async (fields: string) =>
+    renderToStaticMarkup(await EnterprisePage({ searchParams: Promise.resolve({ contact: 'invalid', fields }) }));
+
+  it('invalid details mark only the named fields invalid and describe each with the message', async () => {
+    const html = await invalidWith('email,need');
+    const [name, email, company, fleet, need] = fieldTags(html, FIELDS);
+    for (const tag of [email!, need!]) {
+      expect(attr(tag, 'aria-invalid'), tag).toBe('true');
+      expect(attr(tag, 'aria-describedby'), tag).toBe('contact-outcome');
+    }
+    for (const tag of [name!, company!, fleet!]) expect(tag).not.toMatch(/aria-invalid|aria-describedby/);
+    expect(html).toContain(
+      '<p id="contact-outcome" role="alert" tabindex="-1" data-outcome="invalid">Nothing was sent. Check these fields: Work email, What you need. Then send it again.</p>',
+    );
+  });
+
+  it('ignores unknown names in ?fields=, and marks nothing when none is known', async () => {
+    const html = await invalidWith('website,<script>,__proto__');
+    for (const tag of fieldTags(html, [...FIELDS, 'contact-website'])) expect(tag).not.toMatch(/aria-invalid|aria-describedby/);
+    expect(html).toContain('Some details were missing or not valid, so nothing was sent.');
+    expect(html).not.toContain('&lt;script');
   });
 
   it('never marks the honeypot', async () => {
-    const [honeypot] = fieldTags(await enterprise('invalid'), ['contact-website']);
+    const [honeypot] = fieldTags(await invalidWith('website,name'), ['contact-website']);
     expect(honeypot).not.toMatch(/aria-invalid|aria-describedby/);
   });
 
