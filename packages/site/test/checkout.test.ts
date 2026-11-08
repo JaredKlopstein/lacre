@@ -15,7 +15,7 @@ import { accountIdFor, sessionCookie } from '../src/auth/session.js';
 import type { BillingDb } from '../src/billing-db.js';
 import { CHECKOUT_API_PATH, createCheckoutRoute, type CheckoutRouteOptions } from '../src/checkout.js';
 import { OFF_SALE_PLANS, annualOverageDisclosure } from '../src/plans.js';
-import { fillLegalFacts, openSaleKeepingCheckout, stubSignInEnv } from './sale-env.js';
+import { TEST_FACTS, fillLegalFacts, openSaleKeepingCheckout, stubSignInEnv } from './sale-env.js';
 
 /**
  * Authenticated checkout (#59). Stripe is an in-memory fake handed to cloud's own
@@ -112,7 +112,7 @@ afterEach(() => {
 });
 
 const route = (opts: CheckoutRouteOptions = {}) =>
-  createCheckoutRoute({ stripe: fake.stripe, connect: () => db, log: (line) => logged.push(line), ...opts });
+  createCheckoutRoute({ stripe: fake.stripe, connect: () => db, log: (line) => logged.push(line), legalFacts: TEST_FACTS, ...opts });
 /** Cloud is off sale (#95); this route puts it back on sale to test cloud's own handler. */
 const cloudOnSale = () => route({ offSale: new Set() });
 
@@ -323,6 +323,25 @@ describe('Cloud off sale (#95)', () => {
   });
 });
 
+describe('draft Terms (persona review: Priya 1)', () => {
+  it('creates no session while the legal facts are not set, even with Stripe configured', async () => {
+    const res = await postJson({ kind: 'payg_bundle' }, {}, route({ legalFacts: { ...TEST_FACTS, entityName: null } }));
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('CHECKOUT_UNAVAILABLE');
+    expect(body.error.message).not.toMatch(/entityName|LEGAL|legal\.ts/);
+    expect(fake.checkouts).toEqual([]);
+    expect(logged.join('\n')).toMatch(/entityName/);
+  });
+
+  it('sends a form post back to the checkout page as unavailable, without calling Stripe', async () => {
+    const res = await postForm({ kind: 'payg_bundle' }, await signedInCookie(), route({ legalFacts: { ...TEST_FACTS, refundWindowDays: null } }));
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toContain('checkout=unavailable');
+    expect(fake.checkouts).toEqual([]);
+  });
+});
+
 describe('return URLs', () => {
   const brand = BRAND as { domain: string | null };
   afterEach(() => {
@@ -366,7 +385,7 @@ describe('return URLs', () => {
 });
 
 describe('configuration and secrets', () => {
-  const noStripe = () => createCheckoutRoute({ connect: () => db, log: (l) => logged.push(l) });
+  const noStripe = () => createCheckoutRoute({ connect: () => db, log: (l) => logged.push(l), legalFacts: TEST_FACTS });
   const MISSING = [
     { name: 'no base URL', unset: 'SITE_BASE_URL', status: 500, code: 'CHECKOUT_UNAVAILABLE', handler: route, cause: 'SITE_BASE_URL' },
     { name: 'no DATABASE_URL', unset: 'DATABASE_URL', status: 503, code: 'CHECKOUT_UNAVAILABLE', handler: route, cause: 'DATABASE_URL' },

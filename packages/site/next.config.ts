@@ -4,18 +4,18 @@ import type { NextConfig } from 'next';
  * Security headers on every route. Vercel sets HSTS; this file does not.
  *
  * What the browser loads today, and why the policy is shaped this way:
- * - Scripts are Next's own bundles under `/_next` plus its inline bootstrap,
- *   and one inline script on `/signup` that restores the typed email from
- *   sessionStorage. There is no Stripe.js, analytics, or other third-party
- *   script. `'unsafe-inline'` covers those inline scripts without a nonce.
+ * - Scripts are Next's own bundles under `/_next` plus its inline bootstrap.
+ *   (The sign-up email restore is a React effect now, not an inline script.)
+ *   There is no Stripe.js, analytics, or other third-party script.
+ *   `'unsafe-inline'` covers Next's inline bootstrap without a nonce.
  *   A nonce policy needs per-request middleware and is a follow-up.
  * - Styles are `app/globals.css` from this origin, plus one inline `style`
  *   on the enterprise honeypot.
  * - Images are `app/icon.svg` and the generated `/opengraph-image`. Nothing
  *   is loaded from another host. `data:` is allowed and unused.
- * - Fonts are the system stack in `globals.css` (`--font-sans`, `--font-mono`).
- *   No `@font-face`, no `next/font`, no font file. A later issue self-hosts
- *   fonts, so `font-src` stays `'self'` and does not name Google hosts.
+ * - Fonts are IBM Plex through `next/font/google` (`src/fonts.ts`). The build
+ *   downloads the files and serves them from `/_next/static/media`, so
+ *   `font-src` stays `'self'` and does not name Google hosts.
  * - Connections are same-origin (the waitlist `fetch`, Next's own requests).
  *   Stripe and the email API are called from the server.
  * - Forms post to this origin. `POST /api/checkout` and `POST /api/account/portal`

@@ -22,6 +22,7 @@ import type { StripeLike, SubscriptionLister } from '@lacre/cloud/dist/billing/s
 import { SIGNUP_PATH, linkBase } from './auth/email';
 import { getSignedInAccount } from './auth/session';
 import { BILLING_DATABASE_ENV, billingDb, type ConnectBillingDb } from './billing-db';
+import { LEGAL, missingFacts, type LegalFacts } from './legal';
 import { OFF_SALE_PLANS } from './plans';
 
 export const CHECKOUT_PAGE_PATH = '/checkout';
@@ -49,6 +50,8 @@ export interface CheckoutRouteOptions {
   log?: (line: string) => void;
   /** Plans refused before cloud's handler sees them. Defaults to OFF_SALE_PLANS. */
   offSale?: ReadonlySet<string>;
+  /** The owner's legal facts. Defaults to LEGAL. Tests pass filled-in facts. */
+  legalFacts?: LegalFacts;
 }
 
 interface ErrorBody {
@@ -121,6 +124,14 @@ export function createCheckoutRoute(opts: CheckoutRouteOptions = {}): (request: 
         retryable: false,
         fix: { note: 'Buy a single evidence bundle with {"kind":"payg_bundle"}, or see /pricing for what Cloud will include.' },
       });
+    }
+
+    // Nobody pays under draft Terms. /pricing and /checkout already say bundles
+    // open soon while a legal fact is missing; this keeps a direct POST from
+    // reaching Stripe in that state too. The missing field names go only to the log.
+    const missing = missingFacts(opts.legalFacts ?? LEGAL);
+    if (missing.length > 0) {
+      return unavailable(503, 'CHECKOUT_UNAVAILABLE', `the Terms are a draft; legal facts not set: ${missing.join(', ')}`);
     }
 
     let checkout: (request: Request) => Promise<Response>;
