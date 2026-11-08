@@ -5,6 +5,12 @@
  * in docs/index.html, the Pages landing page; test/exhibit.test.ts checks that
  * the two stay identical and recomputes the chain. Never edit a value by hand:
  * regenerate both together.
+ *
+ * Only the receipts, the anchored head, its time and the authority's name are
+ * kept: not the RFC 3161 token or the agent's public key. So nobody can re-check
+ * this anchor or these signatures, and the copy beside the exhibit must not imply
+ * they can. The checkable DigiCert-anchored bundle is examples/sample-evidence,
+ * which is a different chain.
  */
 export interface ExhibitReceipt {
   readonly seq: number;

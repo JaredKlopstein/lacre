@@ -114,7 +114,8 @@ describe('site app folder', () => {
 
 describe('home page', () => {
   it('leads with the outcome-led headline and the sub-headline', () => {
-    expect(home).toContain('<h1>Your agent says it refunded $42.50. Prove it.</h1>');
+    // The id names the hero region, so a screen reader's landmark list reads the headline, not "Hero".
+    expect(home).toContain('<h1 id="hero-title">Your agent says it refunded $42.50. Prove it.</h1>');
     expect(text(home)).toContain(SUB_HEADLINE);
   });
 
@@ -183,7 +184,9 @@ describe('security page', () => {
   const body = text(unescape(security));
 
   it('names each standard the code implements', () => {
-    const headings = [...security.matchAll(/<h3>([^<]+)<\/h3>/g)].map((m) => m[1]);
+    // Scoped to the Standards section: Keys and identity has h3 headings of its own.
+    const standards = /<section aria-label="Standards">[\s\S]*?<\/section>/.exec(security)?.[0] ?? '';
+    const headings = [...standards.matchAll(/<h3>([^<]+)<\/h3>/g)].map((m) => m[1]);
     expect(headings).toEqual(['RFC 8785', 'SHA-256', 'Ed25519', 'RFC 9421', 'RFC 3161']);
   });
 

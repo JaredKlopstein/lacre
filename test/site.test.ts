@@ -102,6 +102,88 @@ describe('index.html', () => {
     expect(csp).toContain('font-src https://fonts.gstatic.com');
     expect(html).toContain('https://fonts.googleapis.com/css2?');
   });
+
+  it('opens with a skip link to <main>, and keeps the moved banner inside the header landmark', () => {
+    const body = html.slice(html.indexOf('<body>') + '<body>'.length).trimStart();
+    expect(body.startsWith('<a class="skip" href="#main">Skip to content</a>')).toBe(true);
+    expect(html).toMatch(/<main class="wrap" id="main"[^>]*>/);
+    const header = /<header>([\s\S]*?)<\/header>/.exec(html)?.[1] ?? '';
+    expect(header).toContain('<div class="moved">');
+    expect(html.match(/class="moved"/g)).toHaveLength(1);
+  });
+
+  it('makes the scrolling quick-start block keyboard-focusable and names it', () => {
+    const tags = html.match(/<pre class="cmd"[^>]*>/g) ?? [];
+    expect(tags).toHaveLength(1);
+    expect(tags[0]).toContain('tabindex="0"');
+    expect(tags[0]).toContain('role="region"');
+    expect(tags[0]).toContain('aria-label="Quick start commands"');
+  });
+
+  it('keeps the quick start out of ~/.lacre, as docs/getting-started.md does', () => {
+    const cmd = /<pre class="cmd"[^>]*>([\s\S]*?)<\/pre>/.exec(html)?.[1] ?? '';
+    const step = 'export LACRE_HOME="$PWD/.lacre"';
+    expect(read('getting-started.md')).toContain(step);
+    expect(cmd).toContain(step);
+    expect(cmd.indexOf(step)).toBeLessThan(cmd.indexOf('lacre.mjs init'));
+    expect(cmd.indexOf(step)).toBeGreaterThan(cmd.indexOf('pnpm run build'));
+  });
+});
+
+/**
+ * The "operator holds the keys" plates quote the tools. They used to claim to be
+ * verbatim while paraphrasing; now they are real output, trimmed with … marks.
+ * Every quoted sentence must still be one the tools actually print.
+ */
+describe('terminal plates', () => {
+  const html = read('index.html');
+  const src = (path: string) => readFileSync(new URL(`../packages/${path}`, import.meta.url), 'utf8');
+  const plates = [...html.matchAll(/<div class="plate">[\s\S]*?<pre>([\s\S]*?)<\/pre>/g)].map((m) =>
+    m[1]!.replace(/<[^>]+>/g, ''),
+  );
+
+  it('no longer claims to be verbatim, and says it is trimmed', () => {
+    expect(html).not.toMatch(/verbatim/i);
+    expect(html).toContain("Both are the tools' real output, trimmed where you see …");
+    expect(plates).toHaveLength(2);
+    for (const plate of plates) expect(plate).toContain('…');
+  });
+
+  it('quotes chain verify’s own JSON, including the self-attested anchor_note', () => {
+    const [local] = plates;
+    const note = 'This chain is self-attested: it proves internal consistency only. An operator with database access could have rewritten the entire history, including this result.';
+    expect(src('core/src/actions/chain.ts')).toContain(note);
+    expect(local).toContain('"ok": true');
+    expect(local).toContain('"failures": []');
+    expect(local).toContain('"anchored": false');
+    expect(local).toContain(`"anchor_note": "${note} …"`);
+  });
+
+  it('quotes the verifier’s forgery verdict in full, down to "Do not trust this bundle."', () => {
+    const [, anchored] = plates;
+    const verifier = src('verifier/src/bundle.ts');
+    for (const line of ['VERIFICATION FAILED', 'ANCHOR_HEAD_MISMATCH']) {
+      expect(anchored).toContain(line);
+      expect(verifier + src('verifier/src/cli.ts')).toContain(line);
+    }
+    const verdict = 'FORGERY DETECTED. The receipts in this bundle do not produce the head that was externally timestamped at seq 2. Someone altered the history after it was anchored, and could not forge a replacement timestamp. Do not trust this bundle.';
+    expect(anchored).toContain(verdict);
+    // bundle.ts builds the sentence from string pieces split across lines.
+    expect(verifier).toContain('`FORGERY DETECTED. The receipts in this bundle do not produce the head that was `');
+    expect(verifier).toContain('`was anchored, and could not forge a replacement timestamp. Do not trust this bundle.`');
+  });
+});
+
+describe('Exhibit A on the landing page', () => {
+  const html = read('index.html');
+
+  it('does not imply its anchor can be checked from the page, and points at the sample bundle', () => {
+    expect(html).not.toContain('These are three real receipts');
+    expect(html).not.toContain('The chain above is real.');
+    const note = "not the timestamp token itself, so the anchor can’t be checked from here. To check one, verify the sample bundle below.";
+    expect(html.replace(/\s+/g, ' ').replace(/\\u2019/g, '’')).toContain(note);
+    expect(html).toMatch(/sample bundle in the repository, with its timestamp token,\s+so you can check the anchor yourself\. It is a different chain from Exhibit A\./);
+  });
 });
 
 /**

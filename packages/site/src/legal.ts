@@ -1,9 +1,12 @@
+import { BRAND } from './brand';
+
 /**
  * The facts the Terms, the Privacy Policy, the footer and security.txt need,
  * which only the owner can supply. Every value starts null; nothing here is
  * invented. While any required value is null, /terms and /privacy say they are a
  * draft not yet in effect and show a bracketed placeholder in each gap, and
- * /.well-known/security.txt answers 404 rather than publish a placeholder contact.
+ * /.well-known/security.txt lists only SECURITY_REPORT_URL rather than publish a
+ * placeholder contact.
  *
  * The page text describes only what the site actually does with data (see the
  * Privacy Policy). Owner and counsel review it before it takes effect.
@@ -34,6 +37,13 @@ export interface LegalFacts {
   /** The mailbox provider whose inbox receives chain files by email, named in the Privacy Policy. */
   readonly mailboxProvider: string | null;
 }
+
+/**
+ * Where to report a vulnerability privately: GitHub private vulnerability
+ * reporting on the source repository. It is not an owner-supplied fact and names
+ * no person, so it lives outside LEGAL and works while LEGAL.securityEmail is null.
+ */
+export const SECURITY_REPORT_URL = `${BRAND.repository}/security/advisories/new`;
 
 export const LEGAL: LegalFacts = {
   entityName: null,

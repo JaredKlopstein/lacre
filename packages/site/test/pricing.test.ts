@@ -267,7 +267,7 @@ describe('calls to action (#94)', () => {
 
   it('gives the home hero a primary and a secondary call to action', () => {
     // The hero's copy column, before the Exhibit A slot (revamp 3/9).
-    const hero = /<section aria-label="Hero"[^>]*>[\s\S]*?(?=<div data-slot="exhibit")/.exec(renderToStaticMarkup(HomePage()))?.[0] ?? '';
+    const hero = /<section aria-labelledby="hero-title"[^>]*>[\s\S]*?(?=<div data-slot="exhibit")/.exec(renderToStaticMarkup(HomePage()))?.[0] ?? '';
     expect(links(hero)).toEqual([
       { label: 'Start free', href: getStarted },
       { label: 'See pricing', href: '/pricing' },
