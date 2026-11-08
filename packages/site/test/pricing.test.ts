@@ -117,11 +117,11 @@ describe('pricing cards', () => {
     expect(core.price).toBe('Free');
     expect(core.terms).toEqual(PLANS.free.features.map((f) => f.replace(/ \(lacre-verify\)$/, '')));
     expect(core.terms).toContain('Offline evidence-bundle verification');
-    expect(core.html).not.toMatch(/provenant-/i);
+    expect(core.html).not.toMatch(/lacre-/i);
   });
 
   it('strips only a parenthesised CLI name from the Core terms (#100)', () => {
-    const terms = coreTerms({ ...PLANS.free, features: ['Verify offline (provenant-verify)', 'Batched (at most hourly)'] });
+    const terms = coreTerms({ ...PLANS.free, features: ['Verify offline (lacre-verify)', 'Batched (at most hourly)'] });
     expect(terms).toEqual(['Verify offline', 'Batched (at most hourly)']);
   });
 
@@ -266,7 +266,8 @@ describe('calls to action (#94)', () => {
   });
 
   it('gives the home hero a primary and a secondary call to action', () => {
-    const hero = /<section><h1>[\s\S]*?<\/section>/.exec(renderToStaticMarkup(HomePage()))?.[0] ?? '';
+    // The hero's copy column, before the Exhibit A slot (revamp 3/9).
+    const hero = /<section aria-label="Hero"[^>]*>[\s\S]*?(?=<div data-slot="exhibit")/.exec(renderToStaticMarkup(HomePage()))?.[0] ?? '';
     expect(links(hero)).toEqual([
       { label: 'Start free', href: getStarted },
       { label: 'See pricing', href: '/pricing' },
