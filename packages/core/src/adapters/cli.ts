@@ -40,7 +40,31 @@ interface ParsedArgs {
   flags: Record<string, string | boolean | string[]>;
 }
 
-function parseArgv(argv: string[]): ParsedArgs {
+/**
+ * True when a token can only be read as an option: `--` alone, or `--` plus a
+ * lowercase kebab-case name, optionally with `=value`. Every option this CLI
+ * generates has that shape, because they come from snake_case schema keys.
+ */
+function isOptionShaped(token: string): boolean {
+  return /^--(?:[a-z][a-z0-9-]*(?:=[\s\S]*)?)?$/.test(token);
+}
+
+/**
+ * `takesValue` comes from the action registry: it says whether an option
+ * (snake_case, aliases included) expects a value rather than being a boolean.
+ *
+ * For a value-taking option, the next token is its value even when it begins
+ * with `--`, unless it is option-shaped. About 1 in 4096 base64url Ed25519
+ * public keys begins with `--`, so `--public-key <key>` has to survive that.
+ * An option-shaped token stays an option, so a typo such as
+ * `--display-name --dryrun` is still rejected as unknown rather than silently
+ * becoming the display name while the mutation runs for real. A value that is
+ * itself option-shaped can always be attached as `--opt=value`.
+ *
+ * Booleans and options the registry does not know keep the plain rule: a next
+ * token that does not begin with `--` is the value (`--reliability false`).
+ */
+function parseArgv(argv: string[], takesValue: (key: string) => boolean = () => false): ParsedArgs {
   const positional: string[] = [];
   const flags: Record<string, string | boolean | string[]> = {};
 
@@ -61,7 +85,10 @@ function parseArgv(argv: string[]): ParsedArgs {
     } else {
       key = body;
       const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith('--')) {
+      const nextIsValue =
+        next !== undefined &&
+        (takesValue(key.replace(/-/g, '_')) ? !isOptionShaped(next) : !next.startsWith('--'));
+      if (nextIsValue) {
         value = next;
         i++;
       } else {
@@ -154,6 +181,39 @@ function suggestFlag(
 }
 
 const RESERVED_FLAGS = new Set(['json', 'dry_run', 'store', 'help', 'quiet']);
+
+/**
+ * Which options take a value, read from the action registry. With no action
+ * (before the command is resolved) only the global `--store` does.
+ */
+function valueOptions(action?: ActionDef<never, never>): (key: string) => boolean {
+  const shape = (action && getObjectShape(action.input as z.ZodType)) ?? {};
+  const aliases = action?.aliases ?? {};
+  return (key) => {
+    if (key === 'store') return true;
+    if (RESERVED_FLAGS.has(key)) return false;
+    const field = shape[aliases[key] ?? key];
+    if (!field) return false;
+    return (unwrap(field) as unknown as { def?: { type?: string } }).def?.type !== 'boolean';
+  };
+}
+
+/**
+ * Fix text for value-taking options that ended up with no value, which is
+ * what a value beginning with `--` looks like when it was read as an option.
+ */
+function missingValueHint(
+  flags: Record<string, string | boolean | string[]>,
+  takesValue: (key: string) => boolean,
+): string {
+  const bare = Object.keys(flags).filter((k) => flags[k] === true && takesValue(k));
+  return bare
+    .map((k) => {
+      const opt = `--${k.replace(/_/g, '-')}`;
+      return ` ${opt} takes a value but got none. If the value itself begins with '--', attach it with '=': ${opt}=<value>.`;
+    })
+    .join('');
+}
 
 function getObjectShape(schema: z.ZodType): Record<string, z.ZodType> | null {
   const def = (schema as unknown as { def?: { type?: string; shape?: Record<string, z.ZodType> } }).def;
@@ -334,7 +394,7 @@ const defaultIO: CliIO = {
 };
 
 export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<number> {
-  const { positional, flags } = parseArgv(argv);
+  let { positional, flags } = parseArgv(argv, valueOptions());
   const json = flags.json === true || flags.json === 'true';
 
   const emitError = (err: unknown): number => {
@@ -373,6 +433,10 @@ export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<num
     }
   }
 
+  // Now that the action is known, re-read the options with its schema, so a
+  // value-taking option keeps a value that begins with '--'.
+  const takesValue = valueOptions(matched);
+  if (matched) ({ positional, flags } = parseArgv(argv, takesValue));
   const rest = positional.slice(consumed);
 
   if (!matched) {
@@ -454,7 +518,9 @@ export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<num
           details: { unknown: unknownFlags },
           fix: {
             action: matched.name,
-            note: `Run 'lacre ${matched.name.replace('.', ' ')} --help' for the exact option names, or 'lacre discover --json' for the full input schema.`,
+            note:
+              `Run 'lacre ${matched.name.replace('.', ' ')} --help' for the exact option names, or 'lacre discover --json' for the full input schema.` +
+              missingValueHint(flags, takesValue),
           },
         }),
       );
@@ -476,7 +542,9 @@ export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<num
           details: { issues: parsed.error.issues as unknown as Record<string, unknown>[] },
           fix: {
             action: matched.name,
-            note: `Run 'lacre ${matched.name.replace('.', ' ')} --help' for every option, or 'lacre discover --json' for the full input schema.`,
+            note:
+              `Run 'lacre ${matched.name.replace('.', ' ')} --help' for every option, or 'lacre discover --json' for the full input schema.` +
+              missingValueHint(flags, takesValue),
           },
         }),
       );
