@@ -19,3 +19,8 @@ internal/
 
 # Playwright run output
 test-results/
+
+# Build output from the site and the Python reference client
+.next/
+next-env.d.ts
+__pycache__/
