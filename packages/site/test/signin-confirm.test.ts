@@ -4,7 +4,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { GET, POST } from '../app/api/auth/callback/route.js';
-import SigninPage, { metadata } from '../app/signin/page.js';
+import SigninPage, { generateMetadata } from '../app/signin/page.js';
+
+// The title can carry an outcome (persona review, Sam 1); the referrer and robots rules never change.
+const metadata = await generateMetadata({ searchParams: Promise.resolve({}) });
 import { SIGNUP_PATH } from '../src/auth/email.js';
 import { CALLBACK_PATH, CHECKOUT_PATH, CONFIRM_PATH, SESSION_COOKIE, createLinkToken } from '../src/auth/session.js';
 import { usedTokenSchema } from '../src/auth/used-tokens.js';

@@ -7,10 +7,14 @@ import { SIGNUP_PATH } from '../../src/auth/email';
 import { AccountBar } from '../../src/account-bar';
 import { PRIVACY_PATH, TERMS_PATH } from '../../src/legal';
 import { CHECKOUT_API_PATH, CHECKOUT_OUTCOMES, signedInFromCookie, type CheckoutOutcome } from '../../src/checkout';
+import { bundleSale } from '../../src/bundle-sale';
 import {
+  BUNDLE_CLOSED_LINE,
   BUNDLE_FULFILMENT,
+  BUNDLE_OPENS_SOON,
   BUNDLE_TODAY_ID,
   EARLY_ACCESS_LABEL,
+  GETTING_STARTED_URL,
   WAITLIST_HREF,
   annualOverageDisclosure,
   priceCards,
@@ -33,22 +37,52 @@ type SearchParams = Record<string, string | string[] | undefined>;
 
 // Every price below comes from src/plans.ts, which reads cloud's pricing module.
 // Type no price into this file.
+// The options are only rendered while the bundle is on sale (see below).
 const card = (billing: 'monthly' | 'annual', id: 'bundle' | 'cloud') =>
-  priceCards(billing).find((c) => c.id === id)!;
+  priceCards(billing, { bundleOpen: true }).find((c) => c.id === id)!;
 
 // Each option's terms come from the same price cards as the pricing page, read on
 // each render so an off-sale flag is current. An off-sale plan is shown as early
 // access with its planned terms and the waitlist, never a payment button: the
-// checkout route refuses it anyway.
+// checkout route refuses it anyway. The bundle, the one thing on sale, comes first.
 const options = () =>
   [
+    { id: 'bundle', title: card('monthly', 'bundle').title, card: card('monthly', 'bundle'), fields: { kind: 'payg_bundle' } },
     { id: 'cloud-monthly', title: 'Cloud, monthly', card: card('monthly', 'cloud'), fields: { plan: 'cloud', interval: 'month' } },
     { id: 'cloud-annual', title: 'Cloud, annual', card: card('annual', 'cloud'), fields: { plan: 'cloud', interval: 'year' } },
-    { id: 'bundle', title: card('monthly', 'bundle').title, card: card('monthly', 'bundle'), fields: { kind: 'payg_bundle' } },
   ] as const;
 
+/**
+ * Checkout while a bundle cannot be bought here: the Terms are still a draft, or
+ * payment or sign-in is not set up. It says so and offers the way forward, rather
+ * than sending the visitor to a sign-in form that cannot send. No account needed.
+ */
+function OpensSoon() {
+  return (
+    <section data-sale="closed">
+      <h1>Checkout</h1>
+      <h2>{BUNDLE_OPENS_SOON}</h2>
+      <p>{BUNDLE_CLOSED_LINE}</p>
+      <p>
+        <Link href={WAITLIST_HREF}>Join the early access list</Link> and we will email you when bundles open. No
+        payment details are asked for.
+      </p>
+      <p>
+        Recording and verifying receipts is free and works now, and a bundle covers only receipts already recorded:{' '}
+        <a href={GETTING_STARTED_URL}>start recording with {BRAND.name} Core</a>. Read{' '}
+        <Link href={`/pricing#${BUNDLE_TODAY_ID}`}>how a bundle is made today</Link>.
+      </p>
+    </section>
+  );
+}
+
 export default async function CheckoutPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const account = await signedInFromCookie((await headers()).get('cookie'));
+  // Reading the request first keeps this page dynamic, so the sale below is read on each
+  // request and checkout opens by itself once checkout, sign-in and the Terms are ready.
+  const cookie = (await headers()).get('cookie');
+  if (!bundleSale().open) return <OpensSoon />;
+
+  const account = await signedInFromCookie(cookie);
   if (!account) redirect(`${SIGNUP_PATH}?for=checkout`);
 
   const { checkout } = await searchParams;

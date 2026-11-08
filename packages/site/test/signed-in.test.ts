@@ -22,6 +22,7 @@ import {
 } from '../src/auth/session.js';
 import { usedTokenSchema } from '../src/auth/used-tokens.js';
 import { priceCards, WAITLIST_HREF } from '../src/plans.js';
+import { openSaleKeepingCheckout, stubCheckoutEnv } from './sale-env.js';
 
 /**
  * #101: signed-in pages say who is signed in and let them sign out; checkout lists
@@ -68,8 +69,13 @@ beforeEach(async () => {
   vi.stubEnv('VERCEL_URL', '');
   vi.stubEnv('DATABASE_URL', 'postgresql://test-user:test-password@db.site.test/site');
   pageCookie.value = '';
+  // Checkout renders its options only while a bundle can be bought (bundle-sale.test.ts has the closed state).
+  stubCheckoutEnv();
+  restoreFacts = openSaleKeepingCheckout();
 });
+let restoreFacts: () => void = () => {};
 afterEach(() => {
+  restoreFacts();
   vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();

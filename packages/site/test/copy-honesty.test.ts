@@ -64,7 +64,8 @@ describe('the evidence bundle, described one way', () => {
   });
 
   it('says how a bundle is made today, linked from the pricing intro', () => {
-    expect(pages.pricing).toContain(`anchored bundles today (<a href="#${BUNDLE_TODAY_ID}">how a bundle is made today</a>)`);
+    // "today" left the claim: bundles may not be on sale yet (src/bundle-sale.ts); the link still says how one is made.
+    expect(pages.pricing).toContain(`anchored evidence bundles (<a href="#${BUNDLE_TODAY_ID}">how a bundle is made today</a>)`);
     expect(pages.pricing).toContain(`<h2 id="${BUNDLE_TODAY_ID}">How a bundle is made today</h2>`);
     expect(text(pages.pricing)).toContain(BUNDLE_FULFILMENT);
     expect(BUNDLE_FULFILMENT).toContain(`within ${BUNDLE_DELIVERY_BUSINESS_DAYS} business days`);

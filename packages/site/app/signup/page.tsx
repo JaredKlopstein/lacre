@@ -1,18 +1,36 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { BRAND } from '../../src/brand';
 import { MAGIC_LINK_PATH, MAX_EMAIL_LENGTH, SIGNUP_OUTCOMES, type SignupOutcome } from '../../src/auth/email';
 import { parseDestination, type Destination } from '../../src/auth/session';
+import { AnnounceOutcome, KeepFields } from '../../src/form-outcome';
+import { BUNDLE_OPENS_SOON, WAITLIST_HREF } from '../../src/plans';
 
-const TITLE ='Sign in or create an account';
+const TITLE = 'Sign in or create an account';
 
-export const metadata: Metadata = {
+const METADATA: Metadata = {
   title: TITLE,
   description: `Sign in to ${BRAND.name}, or create your account, with a sign-in link sent to your email.`,
 };
 
-// The magic-link route redirects a form post back here with ?signup=<outcome>, and
-// the callback does the same with ?signup=expired for a link that no longer works.
-// "sent" reads the same whether or not the address already has an account.
+type SearchParams = Record<string, string | string[] | undefined>;
+
+/**
+ * The short title, with the outcome in front after a redirect: "Check your email ·
+ * Sign in or create an account", then the layout's brand. A screen reader reads
+ * the title first after the page loads (persona review, Sam 1).
+ */
+export async function generateMetadata({ searchParams }: { searchParams: Promise<SearchParams> }): Promise<Metadata> {
+  const { signup } = await searchParams;
+  const outcome = SIGNUP_OUTCOMES.find((o) => o === signup);
+  return outcome ? { ...METADATA, title: `${OUTCOME_TITLES[outcome]} · ${TITLE}` } : METADATA;
+}
+
+// The magic-link route redirects a form post back here with ?signup=<outcome> (and
+// the ?for= it was sent with), and the callback does the same with ?signup=expired
+// for a link that no longer works. "sent" reads the same whether or not the address
+// already has an account.
 const OUTCOME_MESSAGES: Record<SignupOutcome, string> = {
   sent: 'If that address can receive email, a sign-in link is on its way. It expires in 15 minutes.',
   invalid: 'That does not look like an email address, so nothing was sent. Check it and send it again.',
@@ -20,6 +38,18 @@ const OUTCOME_MESSAGES: Record<SignupOutcome, string> = {
   failed: 'The sign-in email could not be sent. Try again shortly.',
   expired: 'This sign-in link is no longer valid. Request a new one.',
 };
+
+/** The outcome as the start of the document title, read first after the redirect. */
+const OUTCOME_TITLES: Record<SignupOutcome, string> = {
+  sent: 'Check your email',
+  invalid: 'Error: not a valid email address',
+  unavailable: 'Sign-up not open yet',
+  failed: 'Error: sign-in email not sent',
+  expired: 'Sign-in link expired',
+};
+
+// Errors in what was typed or in the send are alerts; the rest are status messages.
+const ALERTS: readonly SignupOutcome[] = ['invalid', 'failed'];
 
 // A signed-out redirect says where it came from with ?for=<destination key>.
 const CONTEXT_LINES: Record<Destination, string> = {
@@ -35,22 +65,30 @@ const KEEP_EMAIL: readonly SignupOutcome[] = ['invalid', 'unavailable', 'failed'
 // the message. The others (unavailable, failed, expired) are not the field's fault.
 const FIELD_ERRORS: readonly SignupOutcome[] = ['invalid'];
 
-const FORM_ID = 'signup-form';
-const EMAIL_ID = 'signup-email';
-const OUTCOME_ID = 'signup-outcome';
+const SIGNUP_FORM_ID = 'signup-form';
+const SIGNUP_EMAIL_ID = 'signup-email';
+const SIGNUP_OUTCOME_ID = 'signup-outcome';
 const EMAIL_STORAGE_KEY = 'signup-email';
 
-/**
- * The form posts natively and the route answers with a redirect, so the typed
- * address would be lost. It is held in this tab's sessionStorage for one page
- * load instead of riding in the URL, and put back only after a refused or failed
- * send. Nothing from the request is written into the script.
- */
-function keepEmailScript(restore: boolean): string {
-  return `(function(){var f=document.getElementById(${JSON.stringify(FORM_ID)}),e=document.getElementById(${JSON.stringify(EMAIL_ID)}),k=${JSON.stringify(EMAIL_STORAGE_KEY)};if(!f||!e)return;try{var v=sessionStorage.getItem(k);sessionStorage.removeItem(k);if(${restore}&&v&&!e.value)e.value=v;}catch(_){}f.addEventListener('submit',function(){try{sessionStorage.setItem(k,e.value);}catch(_){}});})();`;
+/** What the outcome says, with the way forward when sign-up cannot send. */
+function outcomeMessage(outcome: SignupOutcome, dest: Destination | null): ReactNode {
+  if (outcome !== 'unavailable') return OUTCOME_MESSAGES[outcome];
+  // A buyer on the way to checkout gets the honest state of the bundle, not a dead end.
+  if (dest === 'checkout') {
+    return (
+      <>
+        Sign-in for checkout is not open yet, so nothing was sent and nothing was charged. {BUNDLE_OPENS_SOON}:{' '}
+        <Link href={WAITLIST_HREF}>join the early access list</Link> and we will email you when they do.
+      </>
+    );
+  }
+  return (
+    <>
+      {OUTCOME_MESSAGES.unavailable} <Link href={WAITLIST_HREF}>Join the early access list</Link> to hear when it
+      opens.
+    </>
+  );
 }
-
-type SearchParams = Record<string, string | string[] | undefined>;
 
 export default async function SignupPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const { signup, for: destination } = await searchParams;
@@ -68,30 +106,42 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
         first time you use it. No password.
       </p>
       {outcome && (
-        <p id={fieldError ? OUTCOME_ID : undefined} role="status">
-          {OUTCOME_MESSAGES[outcome]}
+        <p
+          id={SIGNUP_OUTCOME_ID}
+          role={ALERTS.includes(outcome) ? 'alert' : 'status'}
+          tabIndex={-1}
+          data-outcome={outcome}
+        >
+          {outcomeMessage(outcome, dest)}
         </p>
       )}
-      <form id={FORM_ID} method="post" action={MAGIC_LINK_PATH}>
+      <form id={SIGNUP_FORM_ID} method="post" action={MAGIC_LINK_PATH}>
         {dest && <input type="hidden" name="for" value={dest} />}
         <p>
-          <label htmlFor={EMAIL_ID}>Email</label>
+          <label htmlFor={SIGNUP_EMAIL_ID}>Email</label>
           <input
-            id={EMAIL_ID}
+            id={SIGNUP_EMAIL_ID}
             name="email"
             type="email"
             required
             maxLength={MAX_EMAIL_LENGTH}
             autoComplete="email"
             aria-invalid={fieldError || undefined}
-            aria-describedby={fieldError ? OUTCOME_ID : undefined}
+            aria-describedby={fieldError ? SIGNUP_OUTCOME_ID : undefined}
           />
         </p>
         <p>
           <button type="submit">Send sign-in link</button>
         </p>
       </form>
-      <script dangerouslySetInnerHTML={{ __html: keepEmailScript(!!outcome && KEEP_EMAIL.includes(outcome)) }} />
+      {/* The address is held in this tab for one page load and put back only after a refused or failed send. */}
+      <KeepFields
+        formId={SIGNUP_FORM_ID}
+        fieldIds={[SIGNUP_EMAIL_ID]}
+        storageKey={EMAIL_STORAGE_KEY}
+        restore={!!outcome && KEEP_EMAIL.includes(outcome)}
+      />
+      {outcome && <AnnounceOutcome targetId={SIGNUP_OUTCOME_ID} />}
     </section>
   );
 }

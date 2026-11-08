@@ -16,6 +16,8 @@
  * An optional `for` field (a DESTINATIONS key: checkout, account or welcome) is
  * signed into the link as its `dest` claim and picks where the callback lands.
  * Any other value is ignored and the link lands on checkout, as one without it.
+ * A known key also rides back on the form post's redirect (`?signup=<outcome>&for=<key>`),
+ * so the page keeps saying where the visitor was headed.
  *
  * Like the contact route, it accepts the page's native form post (answered with a
  * 303 back to the page) and JSON (answered with JSON, every error carrying its fix).
@@ -55,9 +57,17 @@ interface ErrorBody {
 
 export async function POST(request: Request): Promise<Response> {
   const form = isForm(request);
+  // The body is read first, so every answer, including a 503 before any config is
+  // checked, can send the page back to the same ?for= it came from.
+  const raw = await request.text();
+  const tooLarge = new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES;
+  const fields = tooLarge ? { email: '', for: null } : readFields(request, raw);
+  // Only a DESTINATIONS key goes back into the URL; anything else is dropped.
+  const dest = parseDestination(fields.for);
+  const signupPage = (outcome: SignupOutcome) => `${SIGNUP_PATH}?signup=${outcome}${dest ? `&for=${dest}` : ''}`;
   const reply = (status: number, outcome: SignupOutcome, body: object, headers: Record<string, string> = {}) =>
     form
-      ? new Response(null, { status: 303, headers: { ...headers, location: `${SIGNUP_PATH}?signup=${outcome}` } })
+      ? new Response(null, { status: 303, headers: { ...headers, location: signupPage(outcome) } })
       : json(status, body, headers);
   const fail = (status: number, outcome: SignupOutcome, error: ErrorBody) => reply(status, outcome, { error });
   const unavailable = (cause: string) => {
@@ -80,9 +90,6 @@ export async function POST(request: Request): Promise<Response> {
   const db = usedTokenDb();
   if (!db) return unavailable(`${DATABASE_URL_ENV} is not set; the send rate limit is kept there`);
 
-  const raw = await request.text();
-  const tooLarge = new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES;
-  const fields = tooLarge ? { email: '', for: null } : readFields(request, raw);
   const email = normalizeEmail(fields.email);
   if (!isEmailAddress(email)) {
     return fail(400, 'invalid', {
@@ -104,7 +111,7 @@ export async function POST(request: Request): Promise<Response> {
   // Over a limit: the same answer as a send, and nothing sent.
   if (!allowed) return reply(200, 'sent', { ok: true, message: SENT });
 
-  const token = await createLinkToken(email, config.secret, parseDestination(fields.for) ?? undefined);
+  const token = await createLinkToken(email, config.secret, dest ?? undefined);
   if (!(await sendMagicLinkEmail(config, email, magicLink(base, token)))) {
     return fail(502, 'failed', {
       code: 'EMAIL_SEND_FAILED',

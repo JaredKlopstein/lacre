@@ -4,13 +4,19 @@ import { describe, expect, it } from 'vitest';
 import { metadata as welcomeMetadata } from '../app/welcome/page.js';
 import OpengraphImage, { alt, contentType, size } from '../app/opengraph-image.js';
 import { metadata } from '../app/layout.js';
-import { metadata as signupMetadata } from '../app/signup/page.js';
+import { generateMetadata as signupTitle } from '../app/signup/page.js';
 import { metadata as checkoutMetadata } from '../app/checkout/page.js';
 import { metadata as howItWorksMetadata } from '../app/how-it-works/page.js';
 import { metadata as securityMetadata } from '../app/security/page.js';
-import { metadata as signinMetadata } from '../app/signin/page.js';
+import { generateMetadata as signinTitle } from '../app/signin/page.js';
 import { metadata as verifyMetadata } from '../app/verify/page.js';
 import { BRAND } from '../src/brand.js';
+
+// Sign-up and sign-in put a form outcome in front of the title (persona review, Sam 1);
+// with none, the title is the page's short name, as before.
+const noOutcome = { searchParams: Promise.resolve({}) };
+const signupMetadata = await signupTitle(noOutcome);
+const signinMetadata = await signinTitle(noOutcome);
 
 /**
  * #102: the favicon and the share image behind every page's Open Graph and Twitter

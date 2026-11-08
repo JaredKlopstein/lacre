@@ -4,11 +4,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { POST } from '../app/api/contact/route.js';
-import EnterprisePage, { metadata } from '../app/enterprise/page.js';
+import EnterprisePage, { generateMetadata } from '../app/enterprise/page.js';
 import { CONTACT_IP_LIMIT, UNKNOWN_CONTACT_IP_BUCKET } from '../src/auth/rate-limit.js';
 import { usedTokenSchema } from '../src/auth/used-tokens.js';
 import { BRAND } from '../src/brand.js';
 import { FLEET_SIZES, HONEYPOT_FIELD } from '../src/contact.js';
+import { AnnounceOutcome, KeepFields, keepFields, type KeepOptions } from '../src/form-outcome.js';
+import { browser, propsOf } from './page-tree.js';
 
 /**
  * The enterprise contact route forwards one submission to CONTACT_FORWARD_URL.
@@ -176,10 +178,21 @@ describe('invalid submission', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('redirects an invalid form post back with contact=invalid', async () => {
+  it('redirects an invalid form post back with contact=invalid and the fields that failed', async () => {
     const res = await postForm({ ...VALID, email: 'not-an-email' });
     expect(res.status).toBe(303);
-    expect(res.headers.get('location')).toBe('/enterprise?contact=invalid');
+    expect(res.headers.get('location')).toBe('/enterprise?contact=invalid&fields=email');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('names every failing field, by key and in form order, and nothing typed (persona review, Sam 8)', async () => {
+    const location = async (fields: Record<string, string>) => (await postForm(fields)).headers.get('location');
+    expect(await location({ ...VALID, company: '  ', fleetSize: 'lots', name: 'n'.repeat(201) })).toBe(
+      '/enterprise?contact=invalid&fields=name,company,fleetSize',
+    );
+    expect(await location({ email: 'ada@example.com' })).toBe('/enterprise?contact=invalid&fields=name,company,fleetSize,need');
+    // An oversized body is the message field's fault.
+    expect(await location({ ...VALID, need: 'x'.repeat(20 * 1024) })).toBe('/enterprise?contact=invalid&fields=need');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -431,15 +444,63 @@ describe('enterprise page', () => {
   });
 
   it('takes brand text from BRAND', async () => {
+    const metadata = await generateMetadata({ searchParams: Promise.resolve({}) });
     expect(metadata.title).toBe('Enterprise');
     expect(metadata.description).toContain(BRAND.name);
   });
 
   it('shows the outcome a form post redirected back with, and nothing for an unknown one', async () => {
-    expect(await render('sent')).toContain(`<p role="status">Thanks. The ${BRAND.name} team has your message`);
+    expect(await render('sent')).toContain(
+      `<p id="contact-outcome" role="status" tabindex="-1" data-outcome="sent">Thanks. The ${BRAND.name} team has your message`,
+    );
     expect(await render('unavailable')).toContain('unavailable right now, so nothing was sent. Try again in a few minutes');
     expect(await render('rate_limited')).toContain('Please try again in a few minutes.');
-    expect(await render('<script>')).not.toContain('role="status"');
-    expect(await render()).not.toContain('role="status"');
+    for (const outcome of ['invalid', 'unavailable', 'failed', 'rate_limited']) {
+      expect(await render(outcome), outcome).toMatch(/<p id="contact-outcome" role="alert" tabindex="-1"/);
+    }
+    expect(await render('<script>')).not.toMatch(/role="(status|alert)"/);
+    expect(await render()).not.toMatch(/role="(status|alert)"/);
+  });
+
+  it('links the public repository when the form cannot take a message, and invents no email (persona review, Marcus 7)', async () => {
+    for (const outcome of ['unavailable', 'failed']) {
+      const html = await render(outcome);
+      expect(html, outcome).toContain(`<a href="${BRAND.repository}">the ${BRAND.name} GitHub repository</a>`);
+      expect(html, outcome).not.toMatch(/mailto:/);
+    }
+  });
+
+  const tree = (params: Record<string, string>) => EnterprisePage({ searchParams: Promise.resolve(params) });
+  const FIELD_IDS = ['contact-name', 'contact-email', 'contact-company', 'contact-fleet', 'contact-need'];
+
+  it('keeps every typed value through a failed send, and none after a sent one (persona review, Marcus 7)', async () => {
+    for (const [outcome, kept] of [['unavailable', true], ['invalid', true], ['failed', true], ['rate_limited', true], ['sent', false]] as const) {
+      const storage = new Map<string, string>();
+      const [first] = propsOf<KeepOptions>(await tree({}), KeepFields);
+      expect(first).toEqual({ formId: 'contact-form', fieldIds: FIELD_IDS, storageKey: 'contact-fields', restore: false });
+      const before = browser(storage, first!.formId, first!.fieldIds);
+      keepFields(before.doc, before.storage, first!);
+      const typed = ['Ada', 'ada@example.com', 'Analytical Engines', '11-100', 'A long message.'];
+      FIELD_IDS.forEach((id, i) => (before.fields[id]!.value = typed[i]!));
+      before.submit();
+
+      const [next] = propsOf<KeepOptions>(await tree({ contact: outcome }), KeepFields);
+      const after = browser(storage, next!.formId, next!.fieldIds);
+      keepFields(after.doc, after.storage, next!);
+      expect(FIELD_IDS.map((id) => after.fields[id]!.value), outcome).toEqual(kept ? typed : ['', '', '', '', '']);
+      expect(storage.size, outcome).toBe(0);
+    }
+    // The honeypot is never kept.
+    expect(FIELD_IDS).not.toContain('contact-website');
+  });
+
+  it('focuses the outcome and puts it first in the title (persona review, Sam 1)', async () => {
+    expect(propsOf(await tree({ contact: 'unavailable' }), AnnounceOutcome)).toEqual([{ targetId: 'contact-outcome' }]);
+    expect(propsOf(await tree({}), AnnounceOutcome)).toEqual([]);
+    const title = async (params: Record<string, string>) => (await generateMetadata({ searchParams: Promise.resolve(params) })).title;
+    expect(await title({ contact: 'unavailable' })).toBe('Contact form unavailable · Enterprise');
+    expect(await title({ contact: 'invalid', fields: 'email' })).toBe('Error: check the marked fields · Enterprise');
+    expect(await title({ contact: 'sent' })).toBe('Message sent · Enterprise');
+    expect(await title({ contact: '<script>' })).toBe('Enterprise');
   });
 });

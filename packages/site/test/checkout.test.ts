@@ -15,6 +15,7 @@ import { accountIdFor, sessionCookie } from '../src/auth/session.js';
 import type { BillingDb } from '../src/billing-db.js';
 import { CHECKOUT_API_PATH, createCheckoutRoute, type CheckoutRouteOptions } from '../src/checkout.js';
 import { OFF_SALE_PLANS, annualOverageDisclosure } from '../src/plans.js';
+import { fillLegalFacts, openSaleKeepingCheckout, stubSignInEnv } from './sale-env.js';
 
 /**
  * Authenticated checkout (#59). Stripe is an in-memory fake handed to cloud's own
@@ -425,7 +426,52 @@ describe('configuration and secrets', () => {
   });
 });
 
+describe('checkout page while bundles cannot be bought here (persona review: Marcus 3, Priya 1)', () => {
+  const render = async () => renderToStaticMarkup(await CheckoutPage({ searchParams: Promise.resolve({}) }));
+
+  it('says bundles open soon, offers the waitlist and never sends anyone to sign-in, while the Terms are a draft', async () => {
+    // Checkout and sign-in are both configured here; only the legal facts are missing, as in this repository.
+    stubSignInEnv();
+    for (const cookie of ['', await signedInCookie()]) {
+      pageCookie.value = cookie;
+      expect(await redirectOf(render)).toBeNull();
+      const html = await render();
+      expect(html).toContain('<section data-sale="closed"><h1>Checkout</h1><h2>Bundles open soon</h2>');
+      expect(html).toContain('Checkout is not open yet, so nothing can be bought or charged here today.');
+      expect(html).toContain('<a href="/pricing#waitlist">Join the early access list</a>');
+      expect(html).not.toMatch(/<form\b|Continue to payment|\/signup/);
+    }
+  });
+
+  it('reads the request before the sale, so Next never prerenders the closed state at build time', () => {
+    const src = readFileSync(new URL('../app/checkout/page.tsx', import.meta.url), 'utf8');
+    const body = src.slice(src.indexOf('export default async function CheckoutPage'));
+    expect(body.indexOf('await headers()')).toBeGreaterThan(-1);
+    expect(body.indexOf('await headers()')).toBeLessThan(body.indexOf('bundleSale()'));
+  });
+
+  it('stays closed while checkout or sign-in is not configured, even with the facts filled in', async () => {
+    const restore = fillLegalFacts();
+    try {
+      vi.stubEnv('MAGIC_LINK_ENABLED', '');
+      expect(await render()).toContain('Bundles open soon');
+      stubSignInEnv();
+      vi.stubEnv('STRIPE_SECRET_KEY', '');
+      expect(await render()).toContain('Bundles open soon');
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe('checkout page', () => {
+  // These render checkout as it is once the owner has set the facts and the variables.
+  let restoreFacts: () => void;
+  beforeEach(() => {
+    restoreFacts = openSaleKeepingCheckout();
+  });
+  afterEach(() => restoreFacts());
+
   it('redirects to signup for checkout when no one is signed in', async () => {
     expect(await redirectOf(() => CheckoutPage({ searchParams: Promise.resolve({}) }))).toBe('/signup?for=checkout');
   });
@@ -441,11 +487,12 @@ describe('checkout page', () => {
     }
   }
 
-  it('offers Cloud monthly, Cloud annual and the bundle as form posts, and links Enterprise', async () => {
+  it('offers the bundle, Cloud monthly and Cloud annual as form posts, and links Enterprise', async () => {
     pageCookie.value = await signedInCookie();
     const html = await renderWithCloudOnSale();
     const options = [...html.matchAll(/data-option="([^"]+)"/g)].map((m) => m[1]);
-    expect(options).toEqual(['cloud-monthly', 'cloud-annual', 'bundle', 'enterprise']);
+    // The bundle, the one thing on sale, comes first (persona review, Marcus 12).
+    expect(options).toEqual(['bundle', 'cloud-monthly', 'cloud-annual', 'enterprise']);
     // The account bar's Sign out form (#101) is not a checkout option.
     const forms = (html.match(/<form\b[^>]*>/g) ?? []).filter((f) => !f.includes('action="/api/auth/sign-out"'));
     expect(forms).toHaveLength(3);

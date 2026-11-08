@@ -30,6 +30,8 @@ const LIMITS = { name: 200, email: 254, company: 200, need: 5000 } as const;
 // Format only: one @, no spaces, a dotted domain ending in a 2+ letter TLD.
 const EMAIL = /^[^\s@<>()[\]",;:]+@[^\s@<>()[\]",;:]+\.[A-Za-z]{2,}$/;
 const NOTHING_SENT = 'Nothing was sent.';
+/** The submission's keys, in the order the form shows them. */
+const CONTACT_FIELDS = ['name', 'email', 'company', 'fleetSize', 'need'] as const;
 const FIX_FIELDS =
   `Send name, email (a work address), company, fleetSize (one of ${FLEET_SIZES.join(', ')}) and need.`;
 
@@ -50,9 +52,14 @@ interface ErrorBody {
 
 export async function POST(request: Request): Promise<Response> {
   const form = isForm(request);
-  const reply = (status: number, outcome: ContactOutcome, body: object) =>
-    form ? redirect(`/enterprise?contact=${outcome}`) : json(status, body);
-  const fail = (status: number, outcome: ContactOutcome, error: ErrorBody) => reply(status, outcome, { error });
+  // An invalid form post also names the fields that failed (fixed keys only), so the
+  // page marks just those: /enterprise?contact=invalid&fields=email,need.
+  const reply = (status: number, outcome: ContactOutcome, body: object, bad: readonly string[] = []) =>
+    form
+      ? redirect(`/enterprise?contact=${outcome}${bad.length ? `&fields=${bad.join(',')}` : ''}`)
+      : json(status, body);
+  const fail = (status: number, outcome: ContactOutcome, error: ErrorBody, bad: readonly string[] = []) =>
+    reply(status, outcome, { error }, bad);
 
   const forward = forwardUrl();
   if ('cause' in forward) {
@@ -81,7 +88,7 @@ export async function POST(request: Request): Promise<Response> {
       message: `Request body exceeds ${MAX_BODY_BYTES} bytes. ${NOTHING_SENT}`,
       retryable: false,
       fix: { note: `Keep "need" under ${LIMITS.need} characters.` },
-    });
+    }, ['need']);
   }
   const fields = parse(request, raw);
   if (!fields) {
@@ -103,7 +110,7 @@ export async function POST(request: Request): Promise<Response> {
       message: `${checked} ${NOTHING_SENT}`,
       retryable: false,
       fix: { note: FIX_FIELDS },
-    });
+    }, invalidFields(fields));
   }
 
   const db = usedTokenDb();
@@ -212,10 +219,23 @@ function parse(request: Request, raw: string): Record<string, string> | null {
   return out;
 }
 
+/** Every field validate() would refuse, by key, in form order. */
+function invalidFields(fields: Record<string, string>): string[] {
+  const value = (key: string) => (fields[key] ?? '').trim();
+  return CONTACT_FIELDS.filter((key) => {
+    const v = value(key);
+    if (!v) return true;
+    if (key in LIMITS && v.length > LIMITS[key as keyof typeof LIMITS]) return true;
+    if (key === 'email') return !EMAIL.test(v);
+    if (key === 'fleetSize') return !(FLEET_SIZES as readonly string[]).includes(v);
+    return false;
+  });
+}
+
 /** The cleaned submission, or a sentence naming what is wrong. */
 function validate(fields: Record<string, string>): ContactSubmission | string {
   const value = (key: string) => (fields[key] ?? '').trim();
-  const missing = ['name', 'email', 'company', 'fleetSize', 'need'].filter((k) => !value(k));
+  const missing = CONTACT_FIELDS.filter((k) => !value(k));
   if (missing.length > 0) return `Missing required field${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}.`;
 
   for (const [key, max] of Object.entries(LIMITS)) {
