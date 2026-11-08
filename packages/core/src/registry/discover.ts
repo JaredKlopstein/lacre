@@ -59,6 +59,10 @@ export function buildManifest(): Record<string, unknown> {
        *  from the collector and then got a 401. */
       scheme: 'ed25519-http-message-signatures (RFC 9421); local CLI uses the on-disk keypair',
       unauthenticated_endpoints: ['/discover', '/llms.txt', '/health', '/.well-known/http-message-signatures-directory', 'POST /agents'],
+      endpoints_note:
+        'These HTTP paths are served only by a Lacre Cloud collector (packages/cloud, early access, ' +
+        'commercial licence). There is no public hosted collector, and the Lacre website serves none ' +
+        'of them. Without a collector, `lacre discover --json` returns this manifest locally.',
       required_covered_components: ['@method', '@authority', '@path'],
       also_required_with_a_body: ['content-digest'],
       replay_window_seconds: 60,
@@ -117,13 +121,16 @@ export function buildManifest(): Record<string, unknown> {
         ],
       },
       note:
-        'Every successful call returns this envelope. `next_actions` entries are fully-formed and ' +
+        'Every successful action call returns this envelope. `next_actions` entries are fully-formed and ' +
         'ready to execute as-is, with ids already filled in -- they are not endpoint names. The array ' +
-        'may be empty when there is no meaningful follow-up.',
+        'may be empty when there is no meaningful follow-up. The exception is discovery itself: ' +
+        '`lacre discover --json` (and `lacre --help --json`) returns this bare manifest, not wrapped ' +
+        'in the envelope, and `lacre <command> --help --json` returns that action\'s bare entry.',
     },
 
     errors: {
       shape: {
+        ok: false,
         error: {
           code: 'ERROR_CODE',
           message: 'Human and agent readable statement of what went wrong.',
@@ -149,7 +156,7 @@ export function buildManifest(): Record<string, unknown> {
       {
         step: 1,
         why: 'Create a keypair and self-register. No approval, no network.',
-        cli: 'lacre init --json',
+        cli: 'lacre init --display-name my-agent --json',
         action: 'init',
         arguments: { display_name: 'my-agent' },
       },
@@ -166,8 +173,8 @@ export function buildManifest(): Record<string, unknown> {
       },
       {
         step: 3,
-        why: 'Write the receipt for real. Returns seq, self_hash and prev_hash.',
-        cli: `lacre record --action refund.issue --action-detail '{"amount_usd":42}' --side-effect-class irreversible --json`,
+        why: 'Write the receipt for real. Returns seq, self_hash and prev_hash. The idempotency key makes a retry return this receipt instead of writing a second one.',
+        cli: `lacre record --action refund.issue --action-detail '{"amount_usd":42}' --side-effect-class irreversible --idempotency-key refund-0001 --json`,
         action: 'record',
         arguments: {
           action: 'refund.issue',

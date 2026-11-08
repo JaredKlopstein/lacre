@@ -6,12 +6,21 @@ the reference surface, it already emits structured JSON and structured errors,
 and shelling out means this client can never drift from the format.
 
 Run:  python3 examples/reference_client.py
+
+Copied into another project, set LACRE_BIN to the path of
+packages/core/bin/lacre.mjs in your Lacre checkout (or to an installed `lacre`
+executable once the package is published).
 """
 import json
+import os
 import subprocess
 from pathlib import Path
 
-BIN = str(Path(__file__).resolve().parent.parent / "packages/core/bin/lacre.mjs")
+BIN = os.environ.get("LACRE_BIN") or str(
+    Path(__file__).resolve().parent.parent / "packages/core/bin/lacre.mjs"
+)
+# A .mjs/.js path runs under node; anything else is an executable.
+PREFIX = ["node", BIN] if BIN.endswith((".mjs", ".cjs", ".js")) else [BIN]
 
 
 class LacreError(Exception):
@@ -24,7 +33,7 @@ class LacreError(Exception):
 
 
 def call(command, args=None):
-    argv = ["node", BIN, *command.split(), "--json"]
+    argv = [*PREFIX, *command.split(), "--json"]
     for key, value in (args or {}).items():
         if value is None or value is False:
             continue
@@ -61,5 +70,6 @@ if __name__ == "__main__":
         side_effect_class="irreversible",
         idempotency_key="refund-c_8812-0002",
     )
-    print("receipt seq:", receipt["seq"], "hash:", receipt["self_hash"][:16])
+    # replayed: True means this key was already recorded and nothing new was written.
+    print("receipt seq:", receipt["seq"], "hash:", receipt["self_hash"][:16], "replayed:", receipt["replayed"])
     print("chain ok:", verify()["ok"])

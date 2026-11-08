@@ -50,8 +50,9 @@ could otherwise change what gets recorded — so the documented shorthands
 **Free — `lacre-verify` (MIT):** standalone offline bundle verification,
 including full RFC 3161 timestamp checking. Verifying is never paywalled.
 
-**Paid — Lacre Cloud:** RFC 3161 anchoring against a real timestamp
-authority, and evidence bundle export (JSON, PDF, HTML).
+**Paid — Lacre Cloud (early access, not on sale):** RFC 3161 anchoring against
+a real timestamp authority, and evidence bundle export (JSON, PDF, HTML). On
+sale today: a single anchored evidence bundle (see below).
 
 **Partly built, and not to be presented as working** — the collector
 authenticates correctly (RFC 9421, with replay and body-swap rejection tested)
@@ -71,13 +72,19 @@ Not built yet: contracts and approvals (Phase 3); leases and fencing tokens
 lacre record --action refund.issue --action-detail '{"amount_usd":42}' --json
 lacre chain verify --json
 
-# paid: anchor to an authority you don't control, then export evidence
-lacre-cloud anchor now --backend tsa --json
-lacre-cloud bundle export --format both --out evidence.json --json
-
 # anyone, offline, with no Lacre server and no commercial code
 node packages/verifier/bin/lacre-verify.mjs evidence.json --trust digicert-root.pem
 ```
+
+**The paid path today is an evidence bundle.** Anchoring a chain to an RFC 3161
+authority you don't control, and exporting it as an evidence bundle, is Lacre
+Cloud's job. Cloud is in early access and not on sale. Its source in
+`packages/cloud` is published for inspection only: its licence grants no right
+to run it. What you can buy now is a single anchored bundle. You send your
+chain file (`lacre.db`, never `agent.key.json`) and get back a bundle that
+`lacre-verify` checks offline. The open-source `lacre anchor now` writes only a
+`noop` anchor, which proves nothing. See
+[Make it evidence](https://github.com/JaredKlopstein/lacre/blob/main/docs/getting-started.md#5-make-it-evidence).
 
 ## What this is honestly worth
 
@@ -108,11 +115,14 @@ a determined operator. Do not oversell them.
   tamper-evident records that *support* logging obligations such as EU AI Act
   Article 12. It is not a compliance product, we are not lawyers, and this is not
   legal advice. Compliance claims are legal exposure.
-- **Do not adopt this on a regulatory timetable alone.** A Digital Omnibus
-  proposal to delay parts of the EU AI Act has been under negotiation, and
-  enforcement dates may move. Adopt Lacre because you need to debug and prove
-  what your agents did; treat any compliance benefit as a consequence, not a
-  reason.
+- **Do not adopt this on a regulatory timetable alone.** The dates have
+  already moved once. The Digital Omnibus on AI, Regulation (EU) 2026/1744
+  (published 24 July 2026), delays the high-risk obligations that include
+  Article 12 record-keeping. They now apply from 2 December 2027 for Annex III
+  systems and 2 August 2028 for Annex I systems. Article 12 also asks for
+  automatic logging, not cryptographic tamper-evidence. Adopt Lacre because
+  you need to debug and prove what your agents did; treat any compliance
+  benefit as a consequence, not a reason.
 - **The standard we align with is a draft with no IETF standing.**
   `draft-sharif-agent-audit-trail` may change. We pin the version we implement
   and document exactly where we diverge (see
@@ -209,7 +219,9 @@ from nothing to a first verified receipt. If an agent needs this README, the
 manifest is incomplete — that is a bug in the manifest.
 
 Reference clients: [TypeScript](examples/reference_client.ts) ·
-[Python](examples/reference_client.py)
+[Python](examples/reference_client.py). Copied into another project, set
+`LACRE_BIN` to the path of `packages/core/bin/lacre.mjs` in your Lacre
+checkout.
 
 ## Development
 
