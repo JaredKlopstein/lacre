@@ -65,10 +65,16 @@ Verify the chain:
 node packages/core/bin/lacre.mjs chain verify --json
 ```
 
-Expect `"ok": true`, `"failures": []` and `"anchored": false`, together with an
-`anchor_note` saying the chain is self-attested. That note is the honest limit
-of a local chain: it proves internal consistency, not that the operator left
-history alone. See "What this is honestly worth" in the
+Expect exit code `0`, `"ok": true`, `"failures": []` and `"anchored": false`,
+together with an `anchor_note` saying the chain is self-attested. A script can
+rely on the exit code alone: if any receipt was altered, the command exits `1`
+with a `CHAIN_BROKEN` error that names the first broken `seq`, carries the full
+result under `error.details.result`, and gives the query to inspect it. A read
+against a store that does not exist (a mistyped `--store` or `LACRE_HOME`)
+exits `1` with `NOT_INITIALIZED` and creates nothing.
+
+The `anchor_note` states the honest limit of a local chain: it proves internal
+consistency, not that the operator left history alone. See "What this is honestly worth" in the
 [README](../README.md#what-this-is-honestly-worth).
 
 ## 3. Verify a real anchored evidence bundle, offline

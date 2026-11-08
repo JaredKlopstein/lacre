@@ -13,7 +13,8 @@ import { randomUUID } from 'node:crypto';
 import { allActions, getAction } from '../registry/registry.js';
 import type { ActionContext, ActionDef, NextAction } from '../registry/types.js';
 import { buildManifest, EXIT_CODES } from '../registry/discover.js';
-import { openDb, closeDb } from '../db/client.js';
+import { existsSync } from 'node:fs';
+import { openDb, closeDb, type Db } from '../db/client.js';
 import { resolveStoreDir, dbPath } from '../config.js';
 import { readLacreEnv } from '../env.js';
 import { loadKeypair } from '../actions/identity.js';
@@ -470,17 +471,11 @@ export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<num
   }
 
   const storeDir = resolveStoreDir(typeof flags.store === 'string' ? flags.store : undefined);
-  const db = openDb(dbPath(storeDir));
+  // Opened only once the arguments are known to be valid, so a rejected call
+  // never touches the store.
+  let db: Db | undefined;
 
   try {
-    let cached: Keypair | null = null;
-    const ctx: ActionContext = {
-      db,
-      storeDir,
-      sessionId: readLacreEnv('LACRE_SESSION_ID') ?? randomUUID(),
-      identity: () => (cached ??= loadKeypair(storeDir)),
-    };
-
     const { input: rawInput, unknown: unknownFlags } = coerceToSchema(
       flags,
       matched.input as z.ZodType,
@@ -562,6 +557,26 @@ export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<num
       );
     }
 
+    // Fail closed. A read against a store that does not exist must not create
+    // an empty one and then report it as a clean, verified chain: a typo in
+    // --store or LACRE_HOME would otherwise look exactly like a sound record.
+    const file = dbPath(storeDir);
+    const storeExists = existsSync(file);
+    if (!storeExists && matched.sideEffect === 'read') {
+      return emitError(notInitialized(storeDir, file));
+    }
+    // A dry run applies nothing, and that includes creating the store. Against
+    // a store that does not exist yet it previews from an empty in-memory one.
+    db = openDb(storeExists || !wantDryRun ? file : ':memory:');
+
+    let cached: Keypair | null = null;
+    const ctx: ActionContext = {
+      db,
+      storeDir,
+      sessionId: readLacreEnv('LACRE_SESSION_ID') ?? randomUUID(),
+      identity: () => (cached ??= loadKeypair(storeDir)),
+    };
+
     const input = parsed.data as never;
     const result = await (wantDryRun ? matched.dryRun!(input, ctx) : matched.handler(input, ctx));
 
@@ -584,8 +599,28 @@ export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<num
   } catch (err) {
     return emitError(err);
   } finally {
-    closeDb(db);
+    if (db) closeDb(db);
   }
+}
+
+/** NOT_INITIALIZED for a read against a store with no database. */
+function notInitialized(storeDir: string, file: string): LacreError {
+  return new LacreError({
+    code: 'NOT_INITIALIZED',
+    message:
+      `No Lacre store at ${storeDir} (expected ${file}). Nothing was executed and no files were created. ` +
+      `A read against a missing store fails rather than reporting an empty chain as verified.`,
+    retryable: false,
+    details: { store: storeDir, db_path: file },
+    fix: {
+      action: 'init',
+      arguments: {},
+      note:
+        `If this is the right location, run 'lacre init --store ${storeDir}' to create it. If you meant an ` +
+        `existing store, pass its directory with --store <dir> or set LACRE_HOME to it; a misspelled path ` +
+        `lands here. The store directory is the one holding lacre.db.`,
+    },
+  });
 }
 
 function describeAction(a: ActionDef<never, never>): Record<string, unknown> {
