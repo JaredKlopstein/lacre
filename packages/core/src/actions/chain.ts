@@ -6,6 +6,7 @@ import { readHead } from '../chain/append.js';
 import { verifyChain, type VerifiableRecord } from '../chain/verify.js';
 import { keyDirectory } from '../agents/store.js';
 import { DEFAULT_LIMIT, MAX_LIMIT, encodeCursor, decodeCursor, project } from '../pagination.js';
+import { LacreError } from '../errors.js';
 
 export const chainVerifyAction = defineAction({
   name: 'chain.verify',
@@ -16,7 +17,7 @@ export const chainVerifyAction = defineAction({
     when: 'After an incident, before exporting evidence, on a schedule, or any time you need to state whether the local record has been altered. Also the fastest way to confirm a restored backup is sound.',
     whenNot: 'This proves the chain is internally consistent. It does NOT prove the operator did not rewrite the whole chain, because a self-hosted chain is self-attested. For evidence a third party should believe, you need external anchoring (Lacre Cloud) plus the standalone verifier.',
     cost: 'Reads and re-hashes every receipt in range: linear in chain length, roughly a second per 100k receipts, no network. Use --from/--to to bound it on a large chain.',
-    returns: 'ok, receipts_checked, the current head, a failures array naming each broken receipt with its seq and reason, intact_ranges proving what is still sound, and warnings (such as agent clock skew) that are not integrity failures.',
+    returns: 'On an intact chain: ok, receipts_checked, the current head, intact_ranges, and warnings (such as agent clock skew) that are not integrity failures. On a broken chain: a CHAIN_BROKEN error (exit 1) naming the first broken seq, with the full result -- the failures array naming each broken receipt with its seq and reason, and intact_ranges proving what is still sound -- under error.details.result.',
   },
   input: z.object({
     from_seq: z.number().int().nonnegative().optional().describe('Verify from this chain position onward.'),
@@ -54,7 +55,7 @@ export const chainVerifyAction = defineAction({
       expectGenesis: input.from_seq === undefined || input.from_seq === 0,
     });
 
-    return {
+    const report = {
       ...result,
       failures: result.failures as unknown as Array<Record<string, unknown>>,
       warnings: result.warnings as unknown as Array<Record<string, unknown>>,
@@ -64,27 +65,57 @@ export const chainVerifyAction = defineAction({
       anchor_note:
         'This chain is self-attested: it proves internal consistency only. An operator with database access could have rewritten the entire history, including this result. External anchoring (Lacre Cloud) is what makes the chain evidence to someone who does not trust the operator.',
     };
+
+    // A broken chain is an error, not a success with ok:false inside it. A
+    // script that runs `lacre chain verify && ship` must not certify a forged
+    // record because it only looked at the exit code.
+    if (!result.ok) throw chainBroken(report);
+    return report;
   },
-  nextActions(_input, output) {
-    if (output.ok) {
-      return [
-        {
-          action: 'receipts.query',
-          arguments: { limit: 10 },
-          why: 'Chain is intact; inspect recent activity.',
-        },
-      ];
-    }
-    const first = output.failures[0] as { seq?: number } | undefined;
+  nextActions() {
+    // Only reached on an intact chain; a broken one throws CHAIN_BROKEN, whose
+    // fix block names the next call.
     return [
       {
         action: 'receipts.query',
-        arguments: { from_seq: Math.max(0, (first?.seq ?? 1) - 2), limit: 5 },
-        why: `Inspect the receipts around the first failure at seq ${first?.seq}.`,
+        arguments: { limit: 10 },
+        why: 'Chain is intact; inspect recent activity.',
       },
     ];
   },
 });
+
+/**
+ * CHAIN_BROKEN, carrying the complete verification result so nothing the
+ * success output used to report is lost. The fix is an executable query for
+ * the first broken receipt.
+ */
+function chainBroken(report: { failures: Array<Record<string, unknown>>; intact_ranges: Array<{ from_seq: number; to_seq: number }> } & Record<string, unknown>): LacreError {
+  const seqs = [...new Set(report.failures.map((f) => f.seq as number))].sort((a, b) => a - b);
+  const first = seqs[0]!;
+  const intact = report.intact_ranges.length
+    ? report.intact_ranges.map((r) => (r.from_seq === r.to_seq ? `${r.from_seq}` : `${r.from_seq}-${r.to_seq}`)).join(', ')
+    : 'none';
+  return new LacreError({
+    code: 'CHAIN_BROKEN',
+    message:
+      `Chain verification FAILED: the first broken receipt is seq ${first}` +
+      (seqs.length > 1 ? ` (${report.failures.length} failure(s) at seq ${seqs.join(', ')})` : '') +
+      `. Receipts still provably intact: ${intact}. The record has been altered or damaged since it ` +
+      `was written; do not treat it as verified. Nothing was written or repaired.`,
+    retryable: false,
+    details: { first_broken_seq: first, result: report },
+    fix: {
+      action: 'receipts.query',
+      arguments: { from_seq: first, to_seq: first, depth: 'full' },
+      note:
+        `Inspect the receipt at seq ${first} with these arguments, and error.details.result.failures for every ` +
+        'failure and its reason. A broken chain cannot be repaired in place: preserve this store as evidence, ' +
+        'restore lacre.db from a known-good backup, and re-run chain verify. Do not anchor or export this ' +
+        'chain until the failure is explained.',
+    },
+  });
+}
 
 export const chainHeadAction = defineAction({
   name: 'chain.head',
