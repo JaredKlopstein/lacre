@@ -75,9 +75,12 @@ export class LacreError extends Error {
     this.details = payload.details;
   }
 
-  /** The wire shape. Identical across CLI --json, HTTP and MCP. */
-  toJSON(): { error: LacreErrorPayload } {
+  /** The wire shape. Identical across CLI --json, HTTP and MCP. `ok: false`
+   *  mirrors the success envelope's `ok: true`, so a caller can branch on one
+   *  field whichever way the call went. */
+  toJSON(): { ok: false; error: LacreErrorPayload } {
     return {
+      ok: false,
       error: {
         code: this.code,
         message: this.message,
