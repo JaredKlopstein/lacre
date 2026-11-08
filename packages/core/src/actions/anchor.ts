@@ -5,6 +5,16 @@ import { createAnchor, listAnchors, buildStatement, imprintHex, chainId } from '
 import { anchorBackendNames, getAnchorBackend } from '../anchor/types.js';
 import '../anchor/noop.js';
 
+/**
+ * Said on every noop anchor, real or dry run. An operator who mistakes a noop
+ * anchor for evidence will overstate what they can prove.
+ */
+const NOOP_PROVES_NOTHING =
+  'A noop anchor proves nothing: no authority the operator does not control has seen this chain, so it ' +
+  'is still self-attested. The open-source build ships only the noop backend. A real anchor is an RFC ' +
+  '3161 timestamp from an external authority, which is part of Lacre Cloud (early access); today the way ' +
+  'to get one is to buy an anchored evidence bundle. See "Make it evidence" in docs/getting-started.md.';
+
 export const anchorNowAction = defineAction({
   name: 'anchor.now',
   summary: 'Commit the current chain head to an external timestamp authority',
@@ -43,7 +53,7 @@ export const anchorNowAction = defineAction({
       authority: record.proof.authority ?? null,
       note: backend.isExternal
         ? `Anchored to '${record.proof.authority ?? backend.name}' at ${record.proof.proven_time}. Receipts 0-${record.statement.seq} can no longer be altered without breaking this attestation.`
-        : `Recorded a '${backend.name}' anchor with NO external proof. This is self-attested and establishes nothing to a third party. Configure a real timestamp authority to make it evidence.`,
+        : `Recorded a '${backend.name}' anchor with NO external proof. ${NOOP_PROVES_NOTHING}`,
     };
   },
   dryRun(input, ctx) {
@@ -58,7 +68,8 @@ export const anchorNowAction = defineAction({
       proven_time: null,
       authority: null,
       note: statement
-        ? `Would ask '${input.backend}' to timestamp ${imprintHex(statement)} committing to seq ${statement.seq}. Nothing was sent.`
+        ? `Would ask '${input.backend}' to timestamp the anchor statement digest ${imprintHex(statement)}, which commits to seq ${statement.seq} and head ${statement.head_hash}. Nothing was sent.` +
+          (backend && !backend.isExternal ? ` ${NOOP_PROVES_NOTHING}` : '')
         : 'The chain is empty; there is nothing to anchor.',
     };
   },

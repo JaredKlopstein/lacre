@@ -7,14 +7,16 @@ import { GET as securityTxt } from '../app/.well-known/security.txt/route.js';
 import RootLayout from '../app/layout.js';
 import HomePage from '../app/page.js';
 import { LegalNotice } from '../src/legal-notice.js';
-import { LEGAL, REQUIRED_FACTS, fact, missingFacts, type LegalFacts } from '../src/legal.js';
+import { BRAND } from '../src/brand.js';
+import { LEGAL, REQUIRED_FACTS, SECURITY_REPORT_URL, fact, missingFacts, type LegalFacts } from '../src/legal.js';
 import { buildSecurityTxt } from '../src/security-txt.js';
 
 /**
  * #96 (draft): Terms, Privacy, the footer's legal links and security.txt. The
  * owner supplies the entity and contact facts in src/legal.ts; until then the
  * pages say they are a draft and show bracketed placeholders, and security.txt
- * is not published. Nothing here may invent a name, address or email.
+ * lists only GitHub private vulnerability reporting. Nothing here may invent a
+ * name, address or email.
  */
 
 const FILLED: LegalFacts = {
@@ -110,14 +112,16 @@ describe('footer and checkout links', () => {
   const html = renderToStaticMarkup(RootLayout({ children: HomePage() }));
   const legalNav = /<nav aria-label="Legal">([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? '';
 
-  it('every page footer links Terms, Privacy and Contact', () => {
+  it('every page footer links Terms, Privacy, a contact and where to report a vulnerability', () => {
     expect(legalNav).toContain('href="/terms">Terms</a>');
     expect(legalNav).toContain('href="/privacy">Privacy</a>');
-    expect(legalNav).toMatch(/>Contact<\/a>/);
+    expect(legalNav).toMatch(/>(Contact|Sales and enterprise)<\/a>/);
+    expect(legalNav).toContain('href="/security#report-a-vulnerability">Report a vulnerability</a>');
   });
 
-  it('Contact goes to the enterprise contact form until a contact email is set', () => {
-    expect(legalNav).toContain('href="/enterprise">Contact</a>');
+  it('labels the enterprise form as sales, not "Contact", until a contact email is set', () => {
+    expect(legalNav).toContain('href="/enterprise">Sales and enterprise</a>');
+    expect(legalNav).not.toMatch(/>Contact<\/a>/);
   });
 
   it('checkout links the Terms and the Privacy Policy', () => {
@@ -128,10 +132,32 @@ describe('footer and checkout links', () => {
 });
 
 describe('/.well-known/security.txt', () => {
-  it('is not published while no security contact is set', async () => {
+  // It used to answer 404 while LEGAL.securityEmail was null. GitHub private
+  // vulnerability reporting is now enabled on the repository, so there is a real,
+  // non-personal contact to publish without inventing an address.
+  it('is published with GitHub private vulnerability reporting as the Contact, inventing no email', async () => {
     const res = securityTxt();
-    expect(res.status).toBe(404);
-    expect(await res.text()).not.toMatch(/Contact:/);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8');
+    const body = await res.text();
+    expect(SECURITY_REPORT_URL).toBe('https://github.com/JaredKlopstein/lacre/security/advisories/new');
+    expect(body.split('\n')[0]).toBe(`Contact: ${SECURITY_REPORT_URL}`);
+    expect(LEGAL.securityEmail).toBeNull();
+    expect(body).not.toMatch(/mailto:|owner to supply/);
+  });
+
+  it('has an RFC 9116 Expires under a year ahead, and no Canonical or Policy until the site has a domain', async () => {
+    const before = Date.now();
+    const body = await securityTxt().text();
+    const expires = /^Expires: (\S+)$/m.exec(body)?.[1] ?? '';
+    expect(expires).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    const days = (Date.parse(expires) - before) / 86_400_000;
+    expect(days).toBeGreaterThan(0);
+    expect(days).toBeLessThan(365);
+    expect(body).toMatch(/^Preferred-Languages: en$/m);
+    expect(BRAND.domain).toBeNull();
+    // Both must be absolute https URLs on the site's own origin, which needs a domain.
+    expect(body).not.toMatch(/^(Canonical|Policy):/m);
   });
 
   it('once set, has the RFC 9116 Contact and an Expires under a year ahead', () => {

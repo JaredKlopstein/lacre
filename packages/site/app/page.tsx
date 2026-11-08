@@ -1,7 +1,15 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BRAND } from '../src/brand';
-import { GETTING_STARTED_URL } from '../src/plans';
+import {
+  BUNDLE_DELIVERY_BUSINESS_DAYS,
+  BUNDLE_TODAY_ID,
+  EARLY_ACCESS_LABEL,
+  GETTING_STARTED_URL,
+  OFF_SALE_PLANS,
+  WAITLIST_HREF,
+  priceCards,
+} from '../src/plans';
 import { PROOF_TABLE } from '../src/proof-table';
 import { ExhibitChain } from '../src/exhibit-chain';
 import { StandardsStrip } from '../src/standards-strip';
@@ -26,13 +34,16 @@ const PROOF_POINTS = [
   },
 ] as const;
 
+/** The bundle's price exactly as the pricing card shows it, from plans.ts rather than typed in. */
+const BUNDLE_PRICE = priceCards('monthly').find((card) => card.id === 'bundle')!.price;
+
 export default function HomePage() {
   return (
     <>
-      <section aria-label="Hero" className={styles.hero}>
+      <section aria-labelledby="hero-title" className={styles.hero}>
         <div className={styles.copy}>
           <span className="eyebrow">For teams running AI agents that touch money, mail or customer data</span>
-          <h1>Your agent says it refunded $42.50. Prove it.</h1>
+          <h1 id="hero-title">Your agent says it refunded $42.50. Prove it.</h1>
           <p className={styles.lede}>
             Every consequential action gets a signed, hash-chained receipt. Anchor the chain with a timestamp from
             an authority you don’t control, and anyone can verify the record offline, without trusting you.
@@ -43,9 +54,15 @@ export default function HomePage() {
           </p>
           <p className={styles.note}>Open source (MIT). Packages are not on npm yet: run from source.</p>
         </div>
-        {/* Exhibit A: three real receipts, hashed in the browser (src/exhibit-chain.tsx). */}
+        {/* Exhibit A: three receipts, hashed in the browser (src/exhibit-chain.tsx). */}
         <div data-slot="exhibit" className={styles.slot}>
           <ExhibitChain />
+          <p className={styles.note}>
+            The anchor row compares the recomputed head with the head that was timestamped. The timestamp
+            token and the agent’s public key are not on this page, so the anchor and the signatures can’t be
+            checked here. To check a DigiCert anchor yourself, verify the sample bundle in the repository, a
+            separate three-receipt chain, with the offline verifier: <Link href="/verify">Verify a bundle</Link>.
+          </p>
         </div>
       </section>
       <StandardsStrip />
@@ -59,8 +76,12 @@ export default function HomePage() {
           ))}
         </ul>
       </section>
-      <section aria-label="What a self-hosted chain proves">
-        <h2>An audit trail your agents can’t rewrite, and neither can you.</h2>
+      <section aria-labelledby="proof-table-title">
+        <h2 id="proof-table-title">Once anchored, history up to the anchor can’t be rewritten: not by your agents, and not by you.</h2>
+        <p>
+          Before an anchor, a chain is self-attested: it proves internal consistency, not that history was left
+          alone. The table shows exactly where the line falls.
+        </p>
         <table>
           <thead>
             <tr>
@@ -83,15 +104,28 @@ export default function HomePage() {
           <Link href="/security">What each row means</Link>
         </p>
       </section>
-      <section aria-label="Links">
-        <ul>
-          <li>
-            <a href={BRAND.repository}>Source on GitHub</a>
-          </li>
-          <li>
-            <a href={GETTING_STARTED_URL}>Getting started (GitHub)</a>
-          </li>
-        </ul>
+      <section aria-labelledby="today-title">
+        <h2 id="today-title">What you can get today</h2>
+        <p>
+          <strong>{BRAND.name} Core: free.</strong> Record, chain and verify receipts on your own machine, and check
+          evidence bundles with the offline verifier. MIT-licensed. Run it from source: the packages are not on npm
+          yet.
+        </p>
+        <p>
+          <strong>Evidence bundle: {BUNDLE_PRICE}.</strong> We timestamp the head of your chain with a public RFC 3161
+          authority and email the bundle back within {BUNDLE_DELIVERY_BUSINESS_DAYS} business days. It is made by
+          hand today (<Link href={`/pricing#${BUNDLE_TODAY_ID}`}>how a bundle is made</Link>), and it proves the chain
+          existed when it was anchored, not earlier.
+        </p>
+        {OFF_SALE_PLANS.has('cloud') ? (
+          <p>
+            <strong>Cloud: {EARLY_ACCESS_LABEL.toLowerCase()}.</strong> Continuous anchoring is planned, not available
+            yet. <Link href={WAITLIST_HREF}>Join the waitlist</Link>.
+          </p>
+        ) : null}
+        <p className={styles.ctas}>
+          <a href={GETTING_STARTED_URL}>Getting started (GitHub)</a> <Link href="/verify">Verify a bundle</Link>
+        </p>
       </section>
     </>
   );

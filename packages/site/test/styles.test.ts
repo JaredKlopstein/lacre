@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import RootLayout from '../app/layout.js';
 import PricingPage from '../app/pricing/page.js';
 import HowItWorksPage from '../app/how-it-works/page.js';
-import { NAV_LIST_ID, navKeyAction } from '../src/nav-menu.js';
+import { NAV_LIST_ID, navCurrent, navFocusOutCloses, navKeyAction } from '../src/nav-menu.js';
 import { SIGNUP_PATH } from '../src/auth/email.js';
 import { isDue } from '../src/reveal.js';
 import { BRAND } from '../src/brand.js';
@@ -259,7 +259,10 @@ describe('site header', () => {
     expect(button).toContain('aria-expanded="false"');
     expect(button).toContain(`aria-controls="${NAV_LIST_ID}"`);
     expect(nav).toContain(`<ul id="${NAV_LIST_ID}">`);
-    const links = [...nav.matchAll(/<a href="([^"]+)"[^>]*>([^<]+)<\/a>/g)].map((m) => [m[2], m[1]]);
+    const links = [...nav.matchAll(/<a href="([^"]+)"[^>]*>([^<]+)(?:<span[^>]*>[^<]*<\/span>)?<\/a>/g)].map((m) => [
+      m[2],
+      m[1],
+    ]);
     expect(links).toEqual([
       ['How it works', '/how-it-works'],
       ['Verify', '/verify'],
@@ -269,7 +272,13 @@ describe('site header', () => {
       ['Sign in', SIGNUP_PATH],
       ['Start free', GETTING_STARTED_URL],
     ]);
-    expect(nav).toContain(`<li class="nav-cta"><a href="${GETTING_STARTED_URL}">Start free</a></li>`);
+    // Start free goes off-site, so screen readers hear where: "Start free (guide on GitHub)".
+    expect(nav).toContain(
+      `<li class="nav-cta"><a href="${GETTING_STARTED_URL}">Start free<span class="nav-hint"> (guide on GitHub)</span></a></li>`,
+    );
+    expect(block('.site-nav .nav-hint')).toContain('clip: rect(0 0 0 0)');
+    // Rendered outside a route, no link is the current page.
+    expect(nav).not.toContain('aria-current');
     expect(nav).not.toMatch(/>Home<|>Account<|href="\/signin"/);
   });
 
@@ -288,6 +297,23 @@ describe('site header', () => {
 
   it('closes on Escape and sends focus back to the Menu button', () => {
     expect(navKeyAction('Escape', true)).toEqual({ open: false, focusToggle: true });
+  });
+
+  it('closes when focus moves to an element outside the nav, as a disclosure does (no focus trap)', () => {
+    expect(navFocusOutCloses(true, 'outside')).toBe(true);
+    expect(navFocusOutCloses(true, 'inside')).toBe(false);
+    // Focus going nowhere (Safari blurs the Menu button on a tap on a menu link) must not hide the link mid-click.
+    expect(navFocusOutCloses(true, null)).toBe(false);
+    expect(navFocusOutCloses(false, 'outside')).toBe(false);
+  });
+
+  it('marks the link to the current page with aria-current="page", and only that link', () => {
+    expect(navCurrent('/pricing', '/pricing')).toBe('page');
+    expect(navCurrent('/pricing', '/verify')).toBeUndefined();
+    expect(navCurrent('/', '/pricing')).toBeUndefined();
+    expect(navCurrent(null, '/pricing')).toBeUndefined();
+    expect(navCurrent('/x', 'https://github.com/x')).toBeUndefined();
+    expect(block(".site-nav a[aria-current='page']")).toContain('text-decoration: underline');
   });
 
   it('ignores Escape while closed and every other key', () => {

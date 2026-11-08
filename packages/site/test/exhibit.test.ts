@@ -10,6 +10,7 @@ import {
   computeChain,
   jcs,
   sha256hex,
+  spokenHash,
   storedChain,
   verdictOf,
 } from '../src/exhibit-chain.js';
@@ -97,8 +98,27 @@ describe('Exhibit A component', () => {
     expect(html).toContain('$42.50');
   });
 
-  it('announces the verdict politely', () => {
-    expect(html).toMatch(/<div class="[^"]*" aria-live="polite"><strong>Intact<\/strong>/);
+  it('announces the whole verdict politely when it changes', () => {
+    // aria-atomic: the title and body change together, so both are read, not just the changed text node.
+    expect(html).toMatch(/<div class="[^"]*" aria-live="polite" aria-atomic="true"><strong>Intact<\/strong>/);
+  });
+
+  it('hands focus to the next step when a button disables itself, so focus never drops to <body>', () => {
+    // Alter -> Re-sign -> Reset -> Alter. Exercised in a real browser by test-a11y/keyboard.spec.ts.
+    expect(src).toContain("step('tampered', resign.current)");
+    expect(src).toContain("step('resigned', reset.current)");
+    expect(src).toContain("step('intact', alter.current)");
+  });
+
+  it('keys rows by seq, not by state, so a screen reader keeps its place as they update', () => {
+    expect(src).toContain('<li key={r.seq} ');
+    expect(src).toContain('<li key="anchor" ');
+    expect(src).not.toMatch(/key=\{`\$\{state\}/);
+  });
+
+  it('reads a missing amount as text, not as an aria-label on a span (which is ignored)', () => {
+    expect(html).not.toMatch(/<span aria-label=/);
+    expect(html).toMatch(/<span aria-hidden="true">—<\/span><span class="[^"]*">no amount<\/span>/);
   });
 
   it('renders three native buttons, with only the ones that apply enabled', () => {
@@ -114,13 +134,17 @@ describe('Exhibit A component', () => {
     ]);
   });
 
-  it('shows hashes shortened, with the full value as a tooltip and as screen-reader text', () => {
+  it('shows hashes shortened, with the full value as a tooltip, and gives screen readers a short form', () => {
+    expect(spokenHash(anchor.head)).toBe(`${anchor.head.slice(0, 8)}…${anchor.head.slice(-8)}`);
     for (const r of receipts) {
-      expect(html).toContain(`title="${r.self_hash}"`);
-      expect(html).toContain(`>${r.self_hash}</span>`);
-      expect(html).toContain(`<span aria-hidden="true">${r.self_hash.slice(0, 12)}…</span>`);
+      // The tooltip is on the aria-hidden span, so the full 64 characters are never read out.
+      expect(html).toContain(`<span aria-hidden="true" title="${r.self_hash}">${r.self_hash.slice(0, 12)}…</span>`);
+      expect(html).toContain(`>${spokenHash(r.self_hash)}</span>`);
+      expect(html).not.toContain(`>${r.self_hash}</span>`);
     }
     expect(html).toContain(`title="${anchor.head}"`);
+    // Six hashes on screen (prev and self per row, the first prev being null, plus the head), none read in full.
+    expect(html.match(/<span aria-hidden="true" title="[0-9a-f]{64}">/g)).toHaveLength(6);
   });
 
   it('cannot overflow sideways: no <pre>, no nowrap rows, wrapping allowed everywhere', () => {

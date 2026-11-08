@@ -13,7 +13,8 @@ import { randomUUID } from 'node:crypto';
 import { allActions, getAction } from '../registry/registry.js';
 import type { ActionContext, ActionDef, NextAction } from '../registry/types.js';
 import { buildManifest, EXIT_CODES } from '../registry/discover.js';
-import { openDb, closeDb } from '../db/client.js';
+import { existsSync } from 'node:fs';
+import { openDb, closeDb, type Db } from '../db/client.js';
 import { resolveStoreDir, dbPath } from '../config.js';
 import { readLacreEnv } from '../env.js';
 import { loadKeypair } from '../actions/identity.js';
@@ -115,6 +116,7 @@ function coerceToSchema(
   flags: Record<string, string | boolean | string[]>,
   schema: z.ZodType,
   aliases: Record<string, string> = {},
+  action?: ActionDef<never, never>,
 ): { input: Record<string, unknown>; unknown: string[] } {
   const shape = getObjectShape(schema);
   const out: Record<string, unknown> = {};
@@ -130,9 +132,109 @@ function coerceToSchema(
       unknown.push(key);
       continue;
     }
-    out[key] = coerceValue(raw, field);
+    out[key] = coerceValue(raw, field, key, action);
   }
   return { input: out, unknown };
+}
+
+/** `action_detail` -> `--action-detail`. */
+function optionName(key: string): string {
+  return `--${key.replace(/_/g, '-')}`;
+}
+
+/**
+ * A valid value for an object or array option, quoted for a shell: the
+ * action's own example when it has one, otherwise a generic one.
+ */
+function exampleValue(key: string, type: string | undefined, action?: ActionDef<never, never>): string {
+  const fromExample = action?.examples?.find((ex) => ex.arguments[key] !== undefined)?.arguments[key];
+  if (fromExample !== undefined && typeof fromExample === 'object') return `'${JSON.stringify(fromExample)}'`;
+  return type === 'array' ? `'["first","second"]'` : `'{"key":"value"}'`;
+}
+
+/**
+ * JSON.parse, but a failure names the option and shows a value that would
+ * have worked. A bare "Expected property name at position 1" tells an agent
+ * neither which of its options was wrong nor what right looks like.
+ */
+function parseJsonOption(raw: string, key: string, type: string | undefined, action?: ActionDef<never, never>): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    const option = optionName(key);
+    const what = type === 'array' ? 'a JSON array or a comma-separated list' : 'a JSON object';
+    const command = action ? `lacre ${action.name.replace('.', ' ')}` : 'lacre';
+    throw new LacreError({
+      code: 'INVALID_INPUT',
+      message:
+        `${option} is not valid JSON (${err instanceof Error ? err.message : String(err)}). ` +
+        `It takes ${what}. Nothing was executed.`,
+      retryable: false,
+      details: { option, field: key, received: raw },
+      fix: {
+        ...(action ? { action: action.name } : {}),
+        // No `arguments`: running an example value as-is would record made-up facts.
+        note:
+          `Pass ${what} in single quotes so the shell keeps the double quotes, for example: ` +
+          `${command} ${option} ${exampleValue(key, type, action)}. Keys and string values need double quotes.`,
+      },
+    });
+  }
+}
+
+/** The type an option expects, in the words a fix should use. */
+function expectedType(field: z.ZodType | undefined): string {
+  if (!field) return 'nothing (this option is not defined)';
+  const inner = unwrap(field) as unknown as {
+    def?: { type?: string };
+    options?: unknown[];
+    isInt?: boolean;
+  };
+  switch (inner.def?.type) {
+    case 'string': return 'string';
+    case 'number': return inner.isInt ? 'integer' : 'number';
+    case 'boolean': return 'boolean';
+    case 'enum': return `one of ${(inner.options ?? []).map((o) => JSON.stringify(o)).join(' | ')}`;
+    case 'record':
+    case 'object': return 'JSON object';
+    case 'array': return 'comma-separated list or JSON array';
+    case 'unknown':
+    case 'any': return 'any JSON value';
+    default: return inner.def?.type ?? 'value';
+  }
+}
+
+/**
+ * One validation issue, phrased with the CLI option name and the expected
+ * type: `--side-effect-class: expected one of "read" | "write" | "irreversible", got "money"`.
+ */
+function describeIssue(
+  issue: z.core.$ZodIssue,
+  shape: Record<string, z.ZodType>,
+  input: Record<string, unknown>,
+): { text: string; field: Record<string, unknown> } {
+  if (issue.path.length === 0) {
+    return { text: `<root>: ${issue.message}`, field: { field: null, problem: issue.message } };
+  }
+  const key = String(issue.path[0]);
+  const nested = issue.path.length > 1;
+  const option = optionName(key) + (nested ? ` (at ${issue.path.slice(1).join('.')})` : '');
+  const expected = expectedType(shape[key]);
+  const value = nested ? undefined : input[key];
+  const got = value === undefined ? 'nothing (it is required)' : JSON.stringify(value);
+  const typeProblem = issue.code === 'invalid_type' || issue.code === 'invalid_value';
+  return {
+    text: typeProblem && !nested
+      ? `${option}: expected ${expected}, got ${got}`
+      : `${option}: ${issue.message} (expects ${expected})`,
+    field: {
+      field: key,
+      option: optionName(key),
+      expected,
+      ...(value !== undefined ? { received: value } : {}),
+      problem: issue.message,
+    },
+  };
 }
 
 /**
@@ -232,7 +334,12 @@ function unwrap(schema: z.ZodType): z.ZodType {
   return cur;
 }
 
-function coerceValue(raw: string | boolean | string[], field: z.ZodType): unknown {
+function coerceValue(
+  raw: string | boolean | string[],
+  field: z.ZodType,
+  key: string,
+  action?: ActionDef<never, never>,
+): unknown {
   const inner = unwrap(field);
   const type = (inner as unknown as { def?: { type?: string } }).def?.type;
 
@@ -246,11 +353,11 @@ function coerceValue(raw: string | boolean | string[], field: z.ZodType): unknow
   if (type === 'array') {
     if (Array.isArray(raw)) return raw;
     const s = String(raw).trim();
-    if (s.startsWith('[')) return JSON.parse(s);
+    if (s.startsWith('[')) return parseJsonOption(s, key, type, action);
     return s.split(',').map((p) => p.trim()).filter(Boolean);
   }
   if (type === 'record' || type === 'object') {
-    return JSON.parse(String(raw));
+    return parseJsonOption(String(raw), key, type, action);
   }
   // z.unknown() for --input/--output: accept JSON, fall back to the raw string.
   if (type === 'unknown' || type === 'any') {
@@ -470,21 +577,16 @@ export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<num
   }
 
   const storeDir = resolveStoreDir(typeof flags.store === 'string' ? flags.store : undefined);
-  const db = openDb(dbPath(storeDir));
+  // Opened only once the arguments are known to be valid, so a rejected call
+  // never touches the store.
+  let db: Db | undefined;
 
   try {
-    let cached: Keypair | null = null;
-    const ctx: ActionContext = {
-      db,
-      storeDir,
-      sessionId: readLacreEnv('LACRE_SESSION_ID') ?? randomUUID(),
-      identity: () => (cached ??= loadKeypair(storeDir)),
-    };
-
     const { input: rawInput, unknown: unknownFlags } = coerceToSchema(
       flags,
       matched.input as z.ZodType,
       matched.aliases ?? {},
+      matched,
     );
 
     /**
@@ -532,14 +634,19 @@ export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<num
 
     const parsed = (matched.input as z.ZodType).safeParse(rawInput);
     if (!parsed.success) {
+      const shape = getObjectShape(matched.input as z.ZodType) ?? {};
+      const described = parsed.error.issues.map((i) => describeIssue(i, shape, rawInput));
       return emitError(
         new LacreError({
           code: 'INVALID_INPUT',
-          message: `Arguments for '${matched.name}' failed validation: ${parsed.error.issues
-            .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+          message: `Arguments for '${matched.name}' failed validation: ${described
+            .map((d) => d.text)
             .join('; ')}. Nothing was executed.`,
           retryable: false,
-          details: { issues: parsed.error.issues as unknown as Record<string, unknown>[] },
+          details: {
+            fields: described.map((d) => d.field),
+            issues: parsed.error.issues as unknown as Record<string, unknown>[],
+          },
           fix: {
             action: matched.name,
             note:
@@ -561,6 +668,26 @@ export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<num
         }),
       );
     }
+
+    // Fail closed. A read against a store that does not exist must not create
+    // an empty one and then report it as a clean, verified chain: a typo in
+    // --store or LACRE_HOME would otherwise look exactly like a sound record.
+    const file = dbPath(storeDir);
+    const storeExists = existsSync(file);
+    if (!storeExists && matched.sideEffect === 'read') {
+      return emitError(notInitialized(storeDir, file));
+    }
+    // A dry run applies nothing, and that includes creating the store. Against
+    // a store that does not exist yet it previews from an empty in-memory one.
+    db = openDb(storeExists || !wantDryRun ? file : ':memory:');
+
+    let cached: Keypair | null = null;
+    const ctx: ActionContext = {
+      db,
+      storeDir,
+      sessionId: readLacreEnv('LACRE_SESSION_ID') ?? randomUUID(),
+      identity: () => (cached ??= loadKeypair(storeDir)),
+    };
 
     const input = parsed.data as never;
     const result = await (wantDryRun ? matched.dryRun!(input, ctx) : matched.handler(input, ctx));
@@ -584,8 +711,28 @@ export async function runCli(argv: string[], io: CliIO = defaultIO): Promise<num
   } catch (err) {
     return emitError(err);
   } finally {
-    closeDb(db);
+    if (db) closeDb(db);
   }
+}
+
+/** NOT_INITIALIZED for a read against a store with no database. */
+function notInitialized(storeDir: string, file: string): LacreError {
+  return new LacreError({
+    code: 'NOT_INITIALIZED',
+    message:
+      `No Lacre store at ${storeDir} (expected ${file}). Nothing was executed and no files were created. ` +
+      `A read against a missing store fails rather than reporting an empty chain as verified.`,
+    retryable: false,
+    details: { store: storeDir, db_path: file },
+    fix: {
+      action: 'init',
+      arguments: {},
+      note:
+        `If this is the right location, run 'lacre init --store ${storeDir}' to create it. If you meant an ` +
+        `existing store, pass its directory with --store <dir> or set LACRE_HOME to it; a misspelled path ` +
+        `lands here. The store directory is the one holding lacre.db.`,
+    },
+  });
 }
 
 function describeAction(a: ActionDef<never, never>): Record<string, unknown> {

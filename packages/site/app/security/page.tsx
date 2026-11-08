@@ -1,12 +1,14 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { BRAND } from '../../src/brand';
+import { LEGAL, SECURITY_REPORT_URL } from '../../src/legal';
 import { CLOUD_MAX_ANCHOR_MINUTES, EARLY_ACCESS_LABEL } from '../../src/plans';
 import { PROOF_TABLE } from '../../src/proof-table';
 
 export const metadata: Metadata = {
   title: 'Security',
-  description: `The standards ${BRAND.name} is built on, the open-core boundary, and what a self-hosted chain does and does not prove.`,
+  description: `The standards ${BRAND.name} is built on, the open-core boundary, what a self-hosted chain does and does not prove, how agent keys are handled, and how to report a vulnerability.`,
 };
 
 const STANDARDS = [
@@ -31,6 +33,69 @@ const STANDARDS = [
     body: 'Trusted timestamps from an authority the operator does not control anchor the chain head when you buy an evidence bundle, and, once Cloud is available, continuously. The verifier checks the full token offline and reports whether the authority is in your trust list separately from whether the token is sound, because a bundle can embed a self-signed root.',
   },
 ] as const;
+
+/** The CLI and its store are named after the brand, as on /verify. */
+const CLI = BRAND.name.toLowerCase();
+
+/**
+ * Where agent keys live and who vouches for them, as packages/core does it today:
+ * src/actions/identity.ts (init, keygen, agent register), src/config.ts (the
+ * store directory) and src/agents/store.ts (trust on first use).
+ */
+const KEYS: readonly { readonly name: string; readonly body: ReactNode }[] = [
+  {
+    name: 'Where the signing key lives',
+    body: (
+      <>
+        <code>{CLI} init</code> creates an Ed25519 key pair and writes it to <code>agent.key.json</code> in the
+        store directory: <code>./.{CLI}</code> if that directory exists, otherwise <code>~/.{CLI}</code>, unless{' '}
+        <code>--store</code> or <code>{CLI.toUpperCase()}_HOME</code> names another. The file is written with mode
+        0600 and holds the secret key unencrypted. There is no HSM or KMS support yet, so protect that file as you
+        would any credential.
+      </>
+    ),
+  },
+  {
+    name: 'It never leaves the machine',
+    body: 'Receipts are signed locally. The secret key is never sent or logged: what leaves the machine is signatures and public keys. A bundle is made from your chain file, which holds receipts and public keys, and we never ask for the key.',
+  },
+  {
+    name: 'Registration: trust on first use',
+    body: (
+      <>
+        <code>init</code> registers this machine’s agent against its public key. By default the agent id is derived
+        from the key (<code>urn:{CLI}:agent:</code> followed by its RFC 7638 thumbprint), so a different key gives a
+        different id. <code>agent register</code> can bind a chosen id, or enrol a remote agent from a public key
+        you were given out of band. The first key bound to an id stays bound to it: registering the same id with a
+        different key is refused.
+      </>
+    ),
+  },
+  {
+    name: 'Rotation and revocation',
+    body: (
+      <>
+        Neither exists yet. <code>keygen --force</code> archives the old key file and writes a new key, which is a
+        new identity: receipts already written still verify under the old key, but the old id cannot be rebound.
+        There is no way to revoke a key. Anyone who holds the key file can sign new receipts as that agent and,
+        with database access, rebuild history that is not yet anchored; a rewrite of history already anchored
+        still fails verification.
+      </>
+    ),
+  },
+  {
+    name: 'Who vouches for the public keys in a bundle',
+    body: (
+      <>
+        Only the bundle. The verifier checks each signature against the public key the bundle carries for that
+        agent, so a bundle someone built with keys of their own verifies too. Pin your agents’ keys out of band:
+        note each key id when you enrol an agent (<code>{CLI} agent list</code> shows it, and every receipt names
+        its key in <code>{CLI}.key_id</code>) and compare them with the bundle, the same way you pin the timestamp
+        authority’s fingerprint.
+      </>
+    ),
+  },
+];
 
 export default function SecurityPage() {
   return (
@@ -106,6 +171,41 @@ export default function SecurityPage() {
         </p>
         <p>
           <Link href="/verify">Verify a bundle yourself</Link>
+        </p>
+      </section>
+      <section aria-labelledby="keys-and-identity">
+        <h2 id="keys-and-identity">Keys and identity</h2>
+        <p>
+          A receipt’s signature says which key signed it, not who holds that key. This is how agent keys
+          are handled today.
+        </p>
+        <ul>
+          {KEYS.map((k) => (
+            <li key={k.name}>
+              <h3>{k.name}</h3>
+              <p>{k.body}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section aria-labelledby="report-a-vulnerability">
+        <h2 id="report-a-vulnerability">Report a vulnerability</h2>
+        <p>
+          Report security issues privately through GitHub private vulnerability reporting:{' '}
+          <a href={SECURITY_REPORT_URL}>report a vulnerability on GitHub</a>. The report stays private between
+          you and the maintainers until an advisory is published. Please do not open a public issue for a
+          vulnerability.
+          {LEGAL.securityEmail ? (
+            <>
+              {' '}
+              You can also email <a href={`mailto:${LEGAL.securityEmail}`}>{LEGAL.securityEmail}</a>.
+            </>
+          ) : null}
+        </p>
+        <p>
+          In scope: the code in the source repository, which is Core, the verifier, the Cloud package and this site.
+          Anything that lets an altered or forged receipt, chain or bundle verify matters most. The same
+          contact is published in <a href="/.well-known/security.txt">/.well-known/security.txt</a>.
         </p>
       </section>
     </>

@@ -48,7 +48,9 @@ describe('skip link', () => {
   });
 
   it('lands on <main>, which carries the id it points at, exactly once', () => {
-    expect(html).toMatch(/<main id="main">/);
+    // tabindex -1: following the link moves focus to <main>, so VoiceOver follows it too.
+    expect(html).toMatch(/<main id="main" tabindex="-1">/);
+    expect(rules).toMatch(/main:focus \{ outline: none; \}/);
     expect(html.match(/\bid="main"/g)).toHaveLength(1);
   });
 

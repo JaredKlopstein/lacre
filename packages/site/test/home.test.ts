@@ -5,7 +5,14 @@ import { metadata as layoutMetadata } from '../app/layout.js';
 import HomePage, { metadata } from '../app/page.js';
 import SecurityPage from '../app/security/page.js';
 import { BRAND } from '../src/brand.js';
-import { GETTING_STARTED_URL } from '../src/plans.js';
+import {
+  BUNDLE_DELIVERY_BUSINESS_DAYS,
+  BUNDLE_TODAY_ID,
+  GETTING_STARTED_URL,
+  OFF_SALE_PLANS,
+  WAITLIST_HREF,
+  priceCards,
+} from '../src/plans.js';
 import { PROOF_TABLE } from '../src/proof-table.js';
 import { STANDARDS } from '../src/standards-strip.js';
 
@@ -18,7 +25,7 @@ const unescape = (s: string) =>
 const text = unescape(html.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ');
 
 /** The hero's copy column: everything before the Exhibit A slot. */
-const hero = /<section aria-label="Hero"[^>]*>[\s\S]*?(?=<div data-slot="exhibit")/.exec(html)?.[0] ?? '';
+const hero = /<section aria-labelledby="hero-title"[^>]*>[\s\S]*?(?=<div data-slot="exhibit")/.exec(html)?.[0] ?? '';
 
 /** Each table body row as [property, local, anchored]. */
 const tableRows = (page: string) =>
@@ -34,7 +41,7 @@ describe('home page', () => {
   });
 
   it('leads with the approved H1 (D2) and a sub-line that does not say the free tier is timestamped (M4)', () => {
-    expect(hero).toContain('<h1>Your agent says it refunded $42.50. Prove it.</h1>');
+    expect(hero).toContain('<h1 id="hero-title">Your agent says it refunded $42.50. Prove it.</h1>');
     expect(unescape(hero).replace(/\s+/g, ' ')).toContain(
       '>Every consequential action gets a signed, hash-chained receipt. Anchor the chain with a timestamp from an authority you don’t control, and anyone can verify the record offline, without trusting you.</p>',
     );
@@ -42,7 +49,7 @@ describe('home page', () => {
   });
 
   it('puts a mono eyebrow above the H1 and the not-on-npm note under the buttons', () => {
-    expect(hero).toMatch(/<span class="eyebrow">For teams running AI agents that touch money, mail or customer data<\/span><h1>/);
+    expect(hero).toMatch(/<span class="eyebrow">For teams running AI agents that touch money, mail or customer data<\/span><h1 /);
     expect(text).toContain('Open source (MIT). Packages are not on npm yet: run from source.');
   });
 
@@ -98,15 +105,29 @@ describe('home page', () => {
   });
 
   it('renders the limits table from the shared PROOF_TABLE under its own heading', () => {
-    expect(html).toContain('<h2>An audit trail your agents can’t rewrite, and neither can you.</h2>');
+    expect(html).toContain(
+      '<h2 id="proof-table-title">Once anchored, history up to the anchor can’t be rewritten: not by your agents, and not by you.</h2>',
+    );
     expect(tableRows(html)).toEqual(PROOF_TABLE.map((r) => [r.property, r.local, r.anchored]));
+  });
+
+  it('heads the table with a claim the table supports: scoped to anchored history', () => {
+    // The old heading ("can’t rewrite, and neither can you") was contradicted by the "no" cells below it.
+    expect(text).not.toContain('neither can you');
+    expect(text).toContain('Before an anchor, a chain is self-attested');
+    const rebuild = PROOF_TABLE.filter((r) => /rebuild/.test(r.property));
+    expect(rebuild.map((r) => [r.property, r.anchored])).toEqual([
+      ['Detects a full rebuild of anchored history by the operator', 'yes'],
+      ['Detects a rebuild made before that history was anchored', 'no'],
+    ]);
   });
 
   it('shares PROOF_TABLE with the security page, which renders the same rows unchanged', () => {
     expect(tableRows(renderToStaticMarkup(SecurityPage()))).toEqual(tableRows(html));
     expect(PROOF_TABLE.map((r) => [r.property, r.local, r.anchored])).toEqual([
       ['Detects casual tampering', 'yes', 'yes'],
-      ['Detects a full rebuild by the operator', 'no', 'yes'],
+      ['Detects a full rebuild of anchored history by the operator', 'no', 'yes'],
+      ['Detects a rebuild made before that history was anchored', 'no', 'no'],
       ['Detects backdating after the anchor', 'no', 'yes'],
       ['Detects truncation of the un-anchored tail', 'no', 'no'],
     ]);
@@ -128,5 +149,45 @@ describe('home page', () => {
       { label: 'Start free', href: GETTING_STARTED_URL },
       { label: 'See pricing', href: '/pricing' },
     ]);
+  });
+  it('names every region by a heading on the page, never "Hero" or "Links"', () => {
+    expect(html).not.toMatch(/aria-label="(Hero|Links)"/);
+    const ids = [...html.matchAll(/<section aria-labelledby="([^"]+)"/g)].map((m) => m[1]!);
+    expect(ids).toEqual(expect.arrayContaining(['hero-title', 'proof-table-title', 'today-title']));
+    for (const id of ids) expect(html, id).toMatch(new RegExp(`<h[12] id="${id}">[^<]+</h[12]>`));
+  });
+
+  /** The "What you can get today" section's markup, and its text. */
+  const today = /<section aria-labelledby="today-title">([\s\S]*?)<\/section>/.exec(html)?.[1] ?? '';
+  const todayText = unescape(today.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ');
+
+  it('says what you can get today: Core free from source, the bundle at its plans.ts price, Cloud early access', () => {
+    expect(today).toContain('<h2 id="today-title">What you can get today</h2>');
+    expect(todayText).toContain(`${BRAND.name} Core: free.`);
+    expect(todayText).toContain('Run it from source: the packages are not on npm yet.');
+    const bundle = priceCards('monthly').find((c) => c.id === 'bundle')!;
+    expect(todayText).toContain(`Evidence bundle: ${bundle.price}.`);
+    expect(todayText).toContain(`within ${BUNDLE_DELIVERY_BUSINESS_DAYS} business days`);
+    expect(today).toContain(`href="/pricing#${BUNDLE_TODAY_ID}"`);
+    if (OFF_SALE_PLANS.has('cloud')) {
+      expect(todayText).toContain('Cloud: early access. Continuous anchoring is planned, not available yet.');
+      expect(today).toContain(`href="${WAITLIST_HREF}"`);
+    }
+    // No price is typed into the page: it comes from plans.ts.
+    expect(readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8')).not.toContain(bundle.price);
+  });
+
+  it('ends with a styled call-to-action pair, not a bare list of repository links', () => {
+    expect(today).toMatch(/<p class="[^"]*ctas[^"]*"><a href="[^"]+">Getting started \(GitHub\)<\/a> <a href="\/verify">Verify a bundle<\/a><\/p>$/);
+    expect(html).not.toContain(`<li><a href="${BRAND.repository}">Source on GitHub</a></li>`);
+  });
+
+  it('does not present Exhibit A’s anchor as checkable on the page, and says where it is', () => {
+    const slot = /<div data-slot="exhibit"[^>]*>([\s\S]*)<\/div><\/section>/.exec(html)?.[1] ?? '';
+    const note = unescape(slot.slice(slot.lastIndexOf('<p')).replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ');
+    expect(note).toContain('the anchor and the signatures can’t be checked here');
+    expect(note).toContain('verify the sample bundle in the repository, a separate three-receipt chain');
+    expect(slot).toContain('<a href="/verify">Verify a bundle</a>');
+    expect(text).not.toMatch(/\breal (DigiCert|anchor|receipts)\b/i);
   });
 });

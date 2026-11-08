@@ -5,8 +5,9 @@
 are, run everything from a source checkout. Every command below runs from the
 repository root, in order, with no edits.
 
-You need Node 22.5.0 or later and pnpm 11 (`corepack enable` provides the pinned
-version).
+You need Node 22.5.0 or later and pnpm 11. On Node 22 to 24, `corepack enable`
+provides the pinned version. Node 25 and later no longer bundle corepack, so
+install pnpm directly instead with `npm i -g pnpm@11.15.1`.
 
 ## 1. Clone and build
 
@@ -19,7 +20,10 @@ pnpm run build
 
 `pnpm run build` compiles each package into its `dist/` directory, which is
 what the `bin/*.mjs` entry points load. Skip it and the commands below fail
-with a module-not-found error.
+with a module-not-found error. It also builds the website package, which leaves
+build output (`packages/site/.next/`, `next-env.d.ts`) that git reports as
+untracked. To build only the two CLIs, run
+`pnpm --filter @lacre/core --filter @lacre/verifier run build` instead.
 
 ## 2. Record and verify a receipt locally
 
@@ -65,10 +69,16 @@ Verify the chain:
 node packages/core/bin/lacre.mjs chain verify --json
 ```
 
-Expect `"ok": true`, `"failures": []` and `"anchored": false`, together with an
-`anchor_note` saying the chain is self-attested. That note is the honest limit
-of a local chain: it proves internal consistency, not that the operator left
-history alone. See "What this is honestly worth" in the
+Expect exit code `0`, `"ok": true`, `"failures": []` and `"anchored": false`,
+together with an `anchor_note` saying the chain is self-attested. A script can
+rely on the exit code alone: if any receipt was altered, the command exits `1`
+with a `CHAIN_BROKEN` error that names the first broken `seq`, carries the full
+result under `error.details.result`, and gives the query to inspect it. A read
+against a store that does not exist (a mistyped `--store` or `LACRE_HOME`)
+exits `1` with `NOT_INITIALIZED` and creates nothing.
+
+The `anchor_note` states the honest limit of a local chain: it proves internal
+consistency, not that the operator left history alone. See "What this is honestly worth" in the
 [README](../README.md#what-this-is-honestly-worth).
 
 ## 3. Verify a real anchored evidence bundle, offline
@@ -169,6 +179,90 @@ Each entry under `ANCHORS` reports:
 To see a failure, edit any value inside a `canonical_json` string in a copy of
 `evidence.json` and run the verifier on the copy. It names the exact receipt
 and exits `1`.
+
+## 4. Wire receipts into a tool
+
+Put the `record` call in the tool itself, right after the action it describes,
+and record what actually happened: `--outcome success`, `failure`, `timeout`,
+`denied` or `escalated`. A receipt for a failure is worth as much as one for a
+success.
+
+An idempotency key names **one attempt and its result**, not the whole business
+operation. A replay with the same key and the same arguments returns the
+original receipt (`"replayed": true`). The same key with different arguments,
+including a different `--outcome`, is refused with `IDEMPOTENCY_MISMATCH`, and
+nothing is written. So:
+
+- **Retrying the `record` call itself** (the process crashed or timed out
+  before you saw the response): reuse the same key and the identical
+  arguments. You get the original receipt back, never a duplicate.
+- **The action failed and a retry of the action succeeded**: these are two
+  attempts, so give them two keys and record both. Derive each key from the
+  operation and the attempt number:
+
+```bash
+# attempt 1: the payment provider timed out
+node packages/core/bin/lacre.mjs record --action refund.issue \
+  --action-detail '{"order_id":"o_5521","amount_cents":4250}' \
+  --side-effect-class irreversible --outcome timeout \
+  --idempotency-key refund-o_5521-attempt-1 --json
+
+# attempt 2: the retry went through
+node packages/core/bin/lacre.mjs record --action refund.issue \
+  --action-detail '{"order_id":"o_5521","amount_cents":4250}' \
+  --side-effect-class irreversible --outcome success \
+  --idempotency-key refund-o_5521-attempt-2 --json
+```
+
+- **The action succeeded but `record` failed**: retry `record` with the same
+  key and arguments until it succeeds. Do not repeat the action to get a
+  receipt.
+
+Two more rules from real integrations:
+
+- Store money as integer minor units (`"amount_cents":4250`). Receipts are
+  canonicalized, so `42.50` is stored as `42.5`.
+- Branch on the exit code. `0` is success and the JSON is on stdout. Anything
+  else is a typed error on stderr, `{"ok": false, "error": {...}}`, whose `fix`
+  says whether anything was written and what to do next.
+
+The [reference clients](../examples/reference_client.ts) wrap all of this in
+about 40 lines each ([Python](../examples/reference_client.py)). Copied into
+another project, set `LACRE_BIN` to the path of `packages/core/bin/lacre.mjs`
+in your Lacre checkout.
+
+## 5. Make it evidence
+
+A local chain is self-attested, and so is `lacre anchor now`. The open-source
+build ships only the `noop` anchor backend, which records an anchor that
+proves nothing. It has no RFC 3161 timestamp authority. A real anchor is an RFC
+3161 timestamp from an authority you do not control. That is Lacre Cloud's
+job, and Cloud is in early access and not on sale. What you can buy today is a
+single anchored evidence bundle, from the pricing page on the Lacre website.
+After checkout you are asked for your **chain file**. Its chain head is
+timestamped by a public RFC 3161 authority, and you get back a bundle that you,
+or anyone, can check offline as in section 3. The timestamp proves the chain
+existed when it was anchored, not earlier.
+
+The chain file is `lacre.db` in your store directory: `$LACRE_HOME`, or
+`~/.lacre` by default. It holds your receipts and your agents' public keys.
+
+- **Never send `agent.key.json`.** It sits in the same directory and holds the
+  agent's private signing key. Anyone who has it can sign receipts as your
+  agent. Do not zip up the whole store directory.
+- **Do not copy `lacre.db` on its own while agents may be writing.** The store
+  runs in SQLite WAL mode, so recent receipts can sit in the `lacre.db-wal`
+  and `lacre.db-shm` side files, and a plain copy of `lacre.db` can miss them.
+  Take a consistent snapshot with the `sqlite3` command-line shell instead,
+  then check the snapshot before you send it:
+
+```bash
+mkdir -p lacre-export
+sqlite3 "$LACRE_HOME/lacre.db" ".backup 'lacre-export/lacre.db'"
+node packages/core/bin/lacre.mjs chain verify --store lacre-export --json
+```
+
+Send `lacre-export/lacre.db`, and nothing else from the store.
 
 ## Once the packages are published
 

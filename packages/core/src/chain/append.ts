@@ -104,58 +104,69 @@ function argsFingerprint(input: AppendInput): string {
   });
 }
 
+/**
+ * The idempotency check, on its own so a dry run applies exactly the rule the
+ * real write does. Returns the ORIGINAL result for a replay of the same
+ * arguments, throws IDEMPOTENCY_MISMATCH for the same key with different
+ * arguments, and returns null when there is no key or the key is unused.
+ * Reads only; never writes.
+ */
+export function findIdempotentReplay(db: Db, input: AppendInput): AppendResult | null {
+  if (input.idempotencyKey == null) return null;
+  const argsHash = argsFingerprint(input);
+  const existing = db.$client
+    .prepare(
+      'SELECT seq, self_hash as selfHash, canonical_json as canonicalJson, idempotency_args_hash as argsHash FROM receipts WHERE agent_id = ? AND idempotency_key = ?',
+    )
+    .get(input.agentId, input.idempotencyKey) as
+    | { seq: number; selfHash: string; canonicalJson: string; argsHash: string | null }
+    | undefined;
+
+  if (existing) {
+    // A replay must be a replay of the SAME action. Returning the original
+    // receipt for a materially different request would silently discard the
+    // second action and report success -- so a caller who reused a key by
+    // mistake would believe a refund was recorded that never was.
+    if (existing.argsHash !== null && existing.argsHash !== argsHash) {
+      throw new LacreError({
+        code: 'IDEMPOTENCY_MISMATCH',
+        message:
+          `Idempotency key '${input.idempotencyKey}' was already used by agent ${input.agentId} ` +
+          `for a DIFFERENT action (recorded at seq ${existing.seq}). Nothing was written, and the ` +
+          `original receipt is unchanged. Reusing a key with different arguments would silently ` +
+          `discard this action.`,
+        retryable: false,
+        details: {
+          existing_seq: existing.seq,
+          existing_args_hash: existing.argsHash,
+          submitted_args_hash: argsHash,
+        },
+        fix: {
+          action: 'record',
+          note:
+            'Use a new idempotency_key for this action, or resubmit the identical arguments to ' +
+            'replay the original receipt. To inspect what was recorded under this key, run ' +
+            `receipts.query with from_seq ${existing.seq}.`,
+        },
+      });
+    }
+
+    return {
+      receipt: JSON.parse(existing.canonicalJson) as Receipt,
+      seq: existing.seq,
+      selfHash: existing.selfHash,
+      replayed: true,
+    };
+  }
+  return null;
+}
+
 export function appendReceipt(db: Db, input: AppendInput): AppendResult {
   const run = db.$client.transaction((): AppendResult => {
     // --- idempotency: a replay returns the ORIGINAL recorded result ---
-    let argsHash: string | null = null;
-    if (input.idempotencyKey != null) {
-      argsHash = argsFingerprint(input);
-
-      const existing = db.$client
-        .prepare(
-          'SELECT seq, self_hash as selfHash, canonical_json as canonicalJson, idempotency_args_hash as argsHash FROM receipts WHERE agent_id = ? AND idempotency_key = ?',
-        )
-        .get(input.agentId, input.idempotencyKey) as
-        | { seq: number; selfHash: string; canonicalJson: string; argsHash: string | null }
-        | undefined;
-
-      if (existing) {
-        // A replay must be a replay of the SAME action. Returning the original
-        // receipt for a materially different request would silently discard the
-        // second action and report success -- so a caller who reused a key by
-        // mistake would believe a refund was recorded that never was.
-        if (existing.argsHash !== null && existing.argsHash !== argsHash) {
-          throw new LacreError({
-            code: 'IDEMPOTENCY_MISMATCH',
-            message:
-              `Idempotency key '${input.idempotencyKey}' was already used by agent ${input.agentId} ` +
-              `for a DIFFERENT action (recorded at seq ${existing.seq}). Nothing was written, and the ` +
-              `original receipt is unchanged. Reusing a key with different arguments would silently ` +
-              `discard this action.`,
-            retryable: false,
-            details: {
-              existing_seq: existing.seq,
-              existing_args_hash: existing.argsHash,
-              submitted_args_hash: argsHash,
-            },
-            fix: {
-              action: 'record',
-              note:
-                'Use a new idempotency_key for this action, or resubmit the identical arguments to ' +
-                'replay the original receipt. To inspect what was recorded under this key, run ' +
-                `receipts.query with from_seq ${existing.seq}.`,
-            },
-          });
-        }
-
-        return {
-          receipt: JSON.parse(existing.canonicalJson) as Receipt,
-          seq: existing.seq,
-          selfHash: existing.selfHash,
-          replayed: true,
-        };
-      }
-    }
+    const replay = findIdempotentReplay(db, input);
+    if (replay) return replay;
+    const argsHash = input.idempotencyKey != null ? argsFingerprint(input) : null;
 
     const head = readHead(db);
     const seq = head ? head.seq + 1 : 0;

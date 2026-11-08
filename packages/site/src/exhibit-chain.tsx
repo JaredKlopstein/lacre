@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { EXHIBIT_DATA, type ExhibitData } from './exhibit-data';
 import styles from './exhibit-chain.module.css';
 
@@ -110,13 +110,22 @@ export function verdictOf(rows: readonly ChainRow[], anchorHead: string = EXHIBI
 
 const short = (hash: string) => `${hash.slice(0, 12)}…`;
 
-/** A shortened hash on screen, with the full value as a tooltip and for screen readers. */
+/** What a screen reader hears for a hash: the first and last 8 characters, not all 64. */
+export const spokenHash = (hash: string) => `${hash.slice(0, 8)}…${hash.slice(-8)}`;
+
+/**
+ * A shortened hash on screen, with the full value as a tooltip. Screen readers
+ * get a short form of their own: six 64-character runs would take well over a
+ * minute to read. The tooltip sits on the hidden span so it is never read either.
+ */
 function Hash({ value }: { value: string | null }) {
   if (value === null) return <span className={styles.hash}>null</span>;
   return (
-    <span className={styles.hash} title={value}>
-      <span aria-hidden="true">{short(value)}</span>
-      <span className={styles.srOnly}>{value}</span>
+    <span className={styles.hash}>
+      <span aria-hidden="true" title={value}>
+        {short(value)}
+      </span>
+      <span className={styles.srOnly}>{spokenHash(value)}</span>
     </span>
   );
 }
@@ -153,6 +162,22 @@ export function ExhibitChain() {
   const data = EXHIBIT_DATA;
   const [state, setState] = useState<ExhibitState>('intact');
   const [rows, setRows] = useState<ChainRow[]>(() => storedChain(data));
+  const alter = useRef<HTMLButtonElement>(null);
+  const resign = useRef<HTMLButtonElement>(null);
+  const reset = useRef<HTMLButtonElement>(null);
+  const focusAfter = useRef<HTMLButtonElement | null>(null);
+
+  // Each button disables itself once pressed, which would drop focus on <body>
+  // (and send VoiceOver back to the top of the page). Hand focus to the next step
+  // in the same commit instead; the verdict's live region announces the result.
+  const step = (next: ExhibitState, focus: HTMLButtonElement | null) => {
+    focusAfter.current = focus;
+    setState(next);
+  };
+  useLayoutEffect(() => {
+    focusAfter.current?.focus();
+    focusAfter.current = null;
+  }, [state]);
 
   // Recompute in the browser whenever the state changes, the intact state included.
   useEffect(() => {
@@ -181,12 +206,19 @@ export function ExhibitChain() {
 
       <ol className={styles.chain} aria-label="Receipts and anchor">
         {rows.map((r) => (
-          <li key={`${state}-${r.seq}`} className={styles.receipt}>
+          <li key={r.seq} className={styles.receipt}>
             <div className={styles.top}>
               <span className={styles.seq}>SEQ {r.seq}</span>
               <span className={styles.action}>{r.action}</span>
               <span className={r.amount === ALTERED_AMOUNT ? `${styles.amount} ${styles.changed}` : styles.amount}>
-                {r.amount === undefined ? <span aria-label="no amount">—</span> : usd(r.amount)}
+                {r.amount === undefined ? (
+                  <>
+                    <span aria-hidden="true">—</span>
+                    <span className={styles.srOnly}>no amount</span>
+                  </>
+                ) : (
+                  usd(r.amount)
+                )}
               </span>
             </div>
             <div className={styles.link}>
@@ -199,7 +231,7 @@ export function ExhibitChain() {
             </div>
           </li>
         ))}
-        <li key={`${state}-anchor`} className={styles.receipt}>
+        <li key="anchor" className={styles.receipt}>
           <div className={styles.top}>
             <span className={styles.seq}>ANCHOR</span>
             <span className={styles.action}>
@@ -220,18 +252,31 @@ export function ExhibitChain() {
       <div
         className={verdict === 'intact' ? `${styles.verdict} ${styles.verdictOk}` : `${styles.verdict} ${styles.verdictBad}`}
         aria-live="polite"
+        aria-atomic="true"
       >
         <strong>{copy.title}</strong> <span>{copy.body}</span>
       </div>
 
       <div className={styles.controls}>
-        <button type="button" onClick={() => setState('tampered')} disabled={state !== 'intact'}>
+        <button type="button" ref={alter} onClick={() => step('tampered', resign.current)} disabled={state !== 'intact'}>
           Alter the refund to {usd(ALTERED_AMOUNT).replace('.00', '')}
         </button>
-        <button type="button" className={styles.ghost} onClick={() => setState('resigned')} disabled={state !== 'tampered'}>
+        <button
+          type="button"
+          ref={resign}
+          className={styles.ghost}
+          onClick={() => step('resigned', reset.current)}
+          disabled={state !== 'tampered'}
+        >
           Re-sign the chain like the operator would
         </button>
-        <button type="button" className={styles.ghost} onClick={() => setState('intact')} disabled={state === 'intact'}>
+        <button
+          type="button"
+          ref={reset}
+          className={styles.ghost}
+          onClick={() => step('intact', alter.current)}
+          disabled={state === 'intact'}
+        >
           Reset
         </button>
       </div>

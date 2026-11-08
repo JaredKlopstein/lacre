@@ -5,6 +5,9 @@ import { ChainDiagram } from '../../src/chain-diagram';
 import { BUNDLE_FORMAT, CLOUD_MAX_ANCHOR_MINUTES, EARLY_ACCESS_LABEL } from '../../src/plans';
 import { Reveal } from '../../src/reveal';
 
+/** The CLI and its store are named after the brand. */
+const CLI = BRAND.name.toLowerCase();
+
 const CLOUD_EARLY = `Cloud (${EARLY_ACCESS_LABEL.toLowerCase()}, not available yet)`;
 
 export const metadata: Metadata = {
@@ -66,6 +69,18 @@ export default function HowItWorksPage() {
             </li>
           ))}
         </ol>
+      </section>
+      <section aria-labelledby="keys-and-identity">
+        <h2 id="keys-and-identity">Keys and identity</h2>
+        <p>
+          The signing key is created by <code>{CLI} init</code> and kept in <code>agent.key.json</code> in the store
+          directory (by default <code>~/.{CLI}</code>), unencrypted, with file mode 0600. It never leaves the machine:
+          only signatures and public keys do. An agent is registered by trust on first use: its id is bound to the
+          first public key registered for it, and a different key for the same id is refused. There is no key
+          rotation or revocation yet; a new key is a new agent identity. A bundle carries its agents’ public keys
+          and nothing else vouches for them, so pin your agents’ key ids out of band, as you pin the timestamp
+          authority. <Link href="/security#keys-and-identity">Keys and identity in detail</Link>.
+        </p>
       </section>
       <section aria-label="Limits">
         <h2>What the steps do not give you</h2>

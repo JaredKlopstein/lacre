@@ -161,6 +161,11 @@ a:hover {
   transform: none;
 }
 
+/* The skip link focuses <main> (tabindex -1) so screen readers follow it; it is not a control, so no ring. */
+main:focus {
+  outline: none;
+}
+
 /* Code */
 
 code,
@@ -341,6 +346,25 @@ form {
 .site-nav a:hover {
   color: var(--color-accent);
   text-decoration: underline;
+}
+
+/* The link to the page being shown (aria-current), marked for sighted users too. */
+.site-nav a[aria-current='page'] {
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
+}
+
+/* Read after a link's label, never shown: "Start free (guide on GitHub)". */
+.site-nav .nav-hint {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Sign in and Start free sit at the right; Start free is the one button. */
