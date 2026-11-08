@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { defineAction } from '../registry/registry.js';
-import type { NextAction } from '../registry/types.js';
-import { appendReceipt, readHead, nowRfc3339 } from '../chain/append.js';
+import type { ActionContext, NextAction } from '../registry/types.js';
+import { appendReceipt, findIdempotentReplay, readHead, nowRfc3339, type AppendInput } from '../chain/append.js';
 import { requireAgent } from '../agents/store.js';
 import { deriveAgentId } from '../crypto/keys.js';
 import { signReceipt, receiptHash, payloadHash } from '../receipt/hash.js';
@@ -51,6 +51,35 @@ const RecordOutput = z.object({
   dry_run: z.boolean().optional(),
 });
 
+type RecordArgs = z.output<typeof RecordInput>;
+
+/** The one mapping from CLI input to an append, shared by the write and the dry run. */
+function toAppendInput(input: RecordArgs, ctx: ActionContext): AppendInput {
+  const kp = ctx.identity();
+  const agentId = input.agent_id ?? deriveAgentId(kp.publicKey);
+  const agent = requireAgent(ctx.db, agentId);
+  return {
+    agentId,
+    agentVersion: agent.agentVersion,
+    trustLevel: agent.trustLevel as TrustLevel,
+    keyId: kp.keyId,
+    secretKey: kp.secretKey,
+    action: input.action,
+    actionType: input.action_type,
+    actionDetail: input.action_detail,
+    sideEffectClass: input.side_effect_class,
+    outcome: input.outcome,
+    sessionId: input.session_id ?? ctx.sessionId,
+    parentRecordId: input.parent_record_id ?? null,
+    ...(input.input !== undefined ? { input: input.input } : {}),
+    ...(input.output !== undefined ? { output: input.output } : {}),
+    ...(input.model_id !== undefined ? { modelId: input.model_id } : {}),
+    ...(input.risk_score !== undefined ? { riskScore: input.risk_score } : {}),
+    ...(input.latency_ms !== undefined ? { latencyMs: input.latency_ms } : {}),
+    ...(input.idempotency_key !== undefined ? { idempotencyKey: input.idempotency_key } : {}),
+  };
+}
+
 export const recordAction = defineAction({
   name: 'record',
   summary: 'Write a tamper-evident receipt for a consequential action',
@@ -65,31 +94,7 @@ export const recordAction = defineAction({
   input: RecordInput,
   output: RecordOutput,
   handler(input, ctx) {
-    const kp = ctx.identity();
-    const agentId = input.agent_id ?? deriveAgentId(kp.publicKey);
-    const agent = requireAgent(ctx.db, agentId);
-
-    const res = appendReceipt(ctx.db, {
-      agentId,
-      agentVersion: agent.agentVersion,
-      trustLevel: agent.trustLevel as TrustLevel,
-      keyId: kp.keyId,
-      secretKey: kp.secretKey,
-      action: input.action,
-      actionType: input.action_type,
-      actionDetail: input.action_detail,
-      sideEffectClass: input.side_effect_class,
-      outcome: input.outcome,
-      sessionId: input.session_id ?? ctx.sessionId,
-      parentRecordId: input.parent_record_id ?? null,
-      ...(input.input !== undefined ? { input: input.input } : {}),
-      ...(input.output !== undefined ? { output: input.output } : {}),
-      ...(input.model_id !== undefined ? { modelId: input.model_id } : {}),
-      ...(input.risk_score !== undefined ? { riskScore: input.risk_score } : {}),
-      ...(input.latency_ms !== undefined ? { latencyMs: input.latency_ms } : {}),
-      ...(input.idempotency_key !== undefined ? { idempotencyKey: input.idempotency_key } : {}),
-    });
-
+    const res = appendReceipt(ctx.db, toAppendInput(input, ctx));
     return {
       receipt: res.receipt as unknown as Record<string, unknown>,
       seq: res.seq,
@@ -105,6 +110,21 @@ export const recordAction = defineAction({
    * what it is about to commit to -- which matters most for `irreversible`.
    */
   dryRun(input, ctx) {
+    // Idempotency first, by the exact rule the real write applies: a used key
+    // with the same arguments previews the replay of the ORIGINAL receipt, and
+    // a used key with different arguments raises the same IDEMPOTENCY_MISMATCH.
+    const replay = findIdempotentReplay(ctx.db, toAppendInput(input, ctx));
+    if (replay) {
+      return {
+        receipt: replay.receipt as unknown as Record<string, unknown>,
+        seq: replay.seq,
+        self_hash: replay.selfHash,
+        prev_hash: replay.receipt.prev_hash,
+        replayed: true,
+        dry_run: true,
+      };
+    }
+
     const kp = ctx.identity();
     const agentId = input.agent_id ?? deriveAgentId(kp.publicKey);
     const agent = requireAgent(ctx.db, agentId);
@@ -151,11 +171,15 @@ export const recordAction = defineAction({
   },
 
   nextActions(input, output) {
+    const dryRun = (output as { dry_run?: boolean }).dry_run === true;
+    const wrote = !output.replayed && !dryRun;
     const next: NextAction[] = [
       {
         action: 'chain.verify',
         arguments: {},
-        why: 'Confirm the chain still verifies after this write.',
+        why: wrote
+          ? 'Confirm the chain still verifies after this write.'
+          : 'Confirm the chain verifies. Nothing new was written by this call.',
       },
       {
         action: 'receipts.query',
@@ -167,7 +191,9 @@ export const recordAction = defineAction({
       next.unshift({
         action: 'receipts.query',
         arguments: { record_id: (output.receipt as { record_id: string }).record_id },
-        why: 'This call replayed an existing receipt; nothing new was written.',
+        why: dryRun
+          ? 'The real call would replay this existing receipt; nothing new was written.'
+          : 'This call replayed an existing receipt; nothing new was written.',
       });
     }
     return next;

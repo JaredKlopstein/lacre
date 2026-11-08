@@ -21,7 +21,7 @@ import { DEFAULT_LIMIT, MAX_LIMIT } from '../pagination.js';
  */
 export const EXIT_CODES: Readonly<Record<string, string>> = {
   '0': 'Success, including help, discover and --dry-run.',
-  '1': 'Any error, an unknown command included. The typed error is on stderr (JSON with --json).',
+  '1': 'Any error, an unknown command included, and a chain that fails chain verify (CHAIN_BROKEN). The typed error is on stderr (JSON with --json).',
 };
 
 function jsonSchema(schema: z.ZodType): unknown {
@@ -178,7 +178,7 @@ export function buildManifest(): Record<string, unknown> {
       },
       {
         step: 4,
-        why: 'Prove the chain is intact. ok:true means nothing was altered locally.',
+        why: 'Prove the chain is intact. Exit 0 with ok:true means nothing was altered locally; a broken chain exits 1 with a CHAIN_BROKEN error naming the first broken seq.',
         cli: 'lacre chain verify --json',
         action: 'chain.verify',
         arguments: {},
