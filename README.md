@@ -55,12 +55,16 @@ authority, and evidence bundle export (JSON, PDF, HTML).
 
 **Partly built, and not to be presented as working** — the collector
 authenticates correctly (RFC 9421, with replay and body-swap rejection tested)
-but `POST /receipts` is a documented "not implemented"; and invoice computation
-is real while nothing has ever called Stripe. Details in
+but `POST /receipts` is a documented "not implemented"; and Stripe billing
+(checkout, webhook, subscription state) is built and tested but is confirmed
+only in Stripe test mode. Details in
 [packages/cloud/README.md](packages/cloud/README.md).
 
+Shipped in core: an MCP client wrapper (`wrapMcpClient`) that records one chained
+receipt per `tools/call` ([ADR 0004](docs/adr/0004-tool-call-receipts.md)).
+
 Not built yet: contracts and approvals (Phase 3); leases and fencing tokens
-(Phase 4); MCP adapter (Phase 5).
+(Phase 4); a generated MCP server adapter (Phase 5).
 
 ```bash
 # free: record and verify locally

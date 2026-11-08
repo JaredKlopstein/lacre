@@ -30,4 +30,4 @@ export { canonicalize, canonicalBytes, CanonicalizationError } from './jcs.js';
 export { receiptHash, verifyReceiptSignature, jwkToPublicKey, stripUndefined } from './receipt.js';
 export { parseDer, DerError } from './der.js';
 
-export const VERIFIER_VERSION = '0.1.0';
+export const VERIFIER_VERSION = '1.0.0';

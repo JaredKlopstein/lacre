@@ -42,7 +42,8 @@ export (JSON / PDF / HTML), and invoice computation derived from `pricing.ts`.
   secret keys — otherwise a hosted deployment could forge its customers' records,
   which destroys the thing being sold — so agents sign locally and the submission
   protocol for pre-signed receipts still needs its own design pass.
-- **Stripe integration.** `computeInvoice` and the catalog builder are real and
-  tested, but there is no `stripe` dependency, no webhook handling and no
-  subscription persistence. The client is an injected interface; nothing has ever
-  called Stripe.
+- **Stripe billing in live mode.** Checkout, the signature-verified webhook,
+  subscription persistence, overage metering and an idempotent catalog sync are
+  built and tested, and the catalog has been synced to Stripe in test mode. Going
+  live is an owner step (#29); until it is confirmed there, don't present Cloud
+  billing as taking payments.
