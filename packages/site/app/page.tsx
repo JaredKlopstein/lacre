@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BRAND } from '../src/brand';
+import { bundleSale } from '../src/bundle-sale';
 import {
+  BUNDLE_CLOSED_LINE,
   BUNDLE_DELIVERY_BUSINESS_DAYS,
+  BUNDLE_OPENS_SOON,
   BUNDLE_TODAY_ID,
   EARLY_ACCESS_LABEL,
   GETTING_STARTED_URL,
@@ -38,6 +41,9 @@ const PROOF_POINTS = [
 const BUNDLE_PRICE = priceCards('monthly').find((card) => card.id === 'bundle')!.price;
 
 export default function HomePage() {
+  // The same gate /pricing and /checkout use: closed until the owner's legal
+  // facts, checkout and sign-in are all configured.
+  const bundleOpen = bundleSale().open;
   return (
     <>
       <section aria-labelledby="hero-title" className={styles.hero}>
@@ -111,12 +117,21 @@ export default function HomePage() {
           evidence bundles with the offline verifier. MIT-licensed. Run it from source: the packages are not on npm
           yet.
         </p>
-        <p>
-          <strong>Evidence bundle: {BUNDLE_PRICE}.</strong> We timestamp the head of your chain with a public RFC 3161
-          authority and email the bundle back within {BUNDLE_DELIVERY_BUSINESS_DAYS} business days. It is made by
-          hand today (<Link href={`/pricing#${BUNDLE_TODAY_ID}`}>how a bundle is made</Link>), and it proves the chain
-          existed when it was anchored, not earlier.
-        </p>
+        {bundleOpen ? (
+          <p>
+            <strong>Evidence bundle: {BUNDLE_PRICE}.</strong> We timestamp the head of your chain with a public RFC
+            3161 authority and email the bundle back within {BUNDLE_DELIVERY_BUSINESS_DAYS} business days. It is made
+            by hand today (<Link href={`/pricing#${BUNDLE_TODAY_ID}`}>how a bundle is made</Link>), and it proves the
+            chain existed when it was anchored, not earlier.
+          </p>
+        ) : (
+          // Closed: say checkout is not open before any price, so the price never reads as an offer.
+          <p>
+            <strong>Evidence bundle: {BUNDLE_OPENS_SOON.toLowerCase()}.</strong> {BUNDLE_CLOSED_LINE} The planned
+            price is {BUNDLE_PRICE}. <Link href={`/pricing#${BUNDLE_TODAY_ID}`}>How a bundle will be made</Link>, or{' '}
+            <Link href={WAITLIST_HREF}>tell me when bundles open</Link>.
+          </p>
+        )}
         {OFF_SALE_PLANS.has('cloud') ? (
           <p>
             <strong>Cloud: {EARLY_ACCESS_LABEL.toLowerCase()}.</strong> Continuous anchoring is planned, not available

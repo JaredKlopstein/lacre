@@ -70,7 +70,7 @@ function OpensSoon() {
       <p>
         Recording and verifying receipts is free and works now, and a bundle covers only receipts already recorded:{' '}
         <a href={GETTING_STARTED_URL}>start recording with {BRAND.name} Core</a>. Read{' '}
-        <Link href={`/pricing#${BUNDLE_TODAY_ID}`}>how a bundle is made today</Link>.
+        <Link href={`/pricing#${BUNDLE_TODAY_ID}`}>how a bundle will be made</Link>.
       </p>
     </section>
   );

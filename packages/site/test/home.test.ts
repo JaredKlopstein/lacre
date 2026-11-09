@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { metadata as layoutMetadata } from '../app/layout.js';
@@ -6,7 +6,9 @@ import HomePage, { metadata } from '../app/page.js';
 import SecurityPage from '../app/security/page.js';
 import { BRAND } from '../src/brand.js';
 import {
+  BUNDLE_CLOSED_LINE,
   BUNDLE_DELIVERY_BUSINESS_DAYS,
+  BUNDLE_OPENS_SOON,
   BUNDLE_TODAY_ID,
   GETTING_STARTED_URL,
   OFF_SALE_PLANS,
@@ -15,6 +17,7 @@ import {
 } from '../src/plans.js';
 import { PROOF_TABLE } from '../src/proof-table.js';
 import { STANDARDS } from '../src/standards-strip.js';
+import { fillLegalFacts, stubCheckoutEnv, stubSignInEnv } from './sale-env.js';
 
 const html = renderToStaticMarkup(HomePage());
 
@@ -166,9 +169,17 @@ describe('home page', () => {
     expect(todayText).toContain(`${BRAND.name} Core: free.`);
     expect(todayText).toContain('Run it from source: the packages are not on npm yet.');
     const bundle = priceCards('monthly').find((c) => c.id === 'bundle')!;
-    expect(todayText).toContain(`Evidence bundle: ${bundle.price}.`);
-    expect(todayText).toContain(`within ${BUNDLE_DELIVERY_BUSINESS_DAYS} business days`);
+    // The default test environment has no legal facts, so bundles are closed and the
+    // section says so instead of promising delivery (src/bundle-sale.ts).
+    // Checkout-not-open comes first, so the price never reads as an offer.
+    expect(todayText).toContain(
+      `Evidence bundle: ${BUNDLE_OPENS_SOON.toLowerCase()}. ${BUNDLE_CLOSED_LINE} The planned price is ${bundle.price}.`,
+    );
+    expect(todayText.indexOf(BUNDLE_CLOSED_LINE)).toBeLessThan(todayText.indexOf(bundle.price));
+    expect(todayText).not.toContain(`Evidence bundle: ${bundle.price}`);
+    expect(todayText).not.toContain(`within ${BUNDLE_DELIVERY_BUSINESS_DAYS} business days`);
     expect(today).toContain(`href="/pricing#${BUNDLE_TODAY_ID}"`);
+    expect(today).toContain(`href="${WAITLIST_HREF}"`);
     if (OFF_SALE_PLANS.has('cloud')) {
       expect(todayText).toContain('Cloud: early access. Continuous anchoring is planned, not available yet.');
       expect(today).toContain(`href="${WAITLIST_HREF}"`);
@@ -189,5 +200,24 @@ describe('home page', () => {
     expect(note).toContain('verify the sample bundle in the repository, a separate three-receipt chain');
     expect(slot).toContain('<a href="/verify">Verify a bundle</a>');
     expect(text).not.toMatch(/\breal (DigiCert|anchor|receipts)\b/i);
+  });
+});
+
+describe('home page once bundles are open', () => {
+  it('describes the bundle and its delivery, the way /pricing does', () => {
+    const restore = fillLegalFacts();
+    stubCheckoutEnv();
+    stubSignInEnv();
+    try {
+      const open = renderToStaticMarkup(HomePage());
+      const section = /<section aria-labelledby="today-title">([\s\S]*?)<\/section>/.exec(open)?.[1] ?? '';
+      const words = unescape(section.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ');
+      expect(words).toContain(`within ${BUNDLE_DELIVERY_BUSINESS_DAYS} business days`);
+      expect(words).not.toContain(BUNDLE_OPENS_SOON);
+      expect(words).not.toContain(BUNDLE_CLOSED_LINE);
+    } finally {
+      restore();
+      vi.unstubAllEnvs();
+    }
   });
 });

@@ -59,7 +59,14 @@ OPTIONS
 
 EXIT CODES
   0 verified   1 verification failed   2 bundle unreadable or bad arguments
-  (with --require-trusted, an anchor from an untrusted authority is exit 1)
+  0  The bundle verified. Without --require-trusted this does not mean you
+     trust the authority that timestamped it.
+  1  A VERIFICATION FAILED verdict saying why, including for valid JSON that
+     is not a bundle. With --require-trusted, also an anchor from an
+     authority outside your trust list.
+  2  No verdict. The bundle could not be read or is not JSON
+     (BUNDLE_UNREADABLE), a --trust file could not be read or holds no
+     certificate (TRUST_FILE_UNREADABLE), or an option was wrong (USAGE).
 
 This tool makes no network connections and shares no code with the Lacre
 server or the commercial package. Everything it needs is in the bundle.`;

@@ -39,6 +39,12 @@ export const ERROR_CODES = {
   REQUIRES_CLOUD: 'REQUIRES_CLOUD',
   /** A cursor could not be decoded. */
   INVALID_CURSOR: 'INVALID_CURSOR',
+  /** The store's database file is not readable SQLite: corrupt, truncated, or
+   *  not a Lacre store at all. The action did not complete. */
+  STORE_UNREADABLE: 'STORE_UNREADABLE',
+  /** The native SQLite binding (better-sqlite3) is missing or was built for a
+   *  different Node.js version. Nothing was executed. */
+  NATIVE_DEPENDENCY_MISSING: 'NATIVE_DEPENDENCY_MISSING',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -92,10 +98,50 @@ export class LacreError extends Error {
   }
 }
 
+/** STORE_UNREADABLE: the store's lacre.db exists but is not a readable Lacre database. */
+export function storeUnreadable(message: string, details: Record<string, unknown>): LacreError {
+  return new LacreError({
+    code: 'STORE_UNREADABLE',
+    message,
+    retryable: false,
+    fix: {
+      note:
+        'The action did NOT complete and nothing was written. Keep this lacre.db as it is: it may be evidence. ' +
+        'Restore lacre.db from a known-good backup and run lacre chain verify, or pass --store with the ' +
+        'directory of the store you meant.',
+    },
+    details,
+  });
+}
+
 /** Wrap an unknown throw so no surface ever emits an untyped error. */
 export function toLacreError(err: unknown): LacreError {
   if (err instanceof LacreError) return err;
   const message = err instanceof Error ? err.message : String(err);
+  const sqliteCode = (err as { code?: unknown } | null)?.code;
+  if (sqliteCode === 'SQLITE_NOTADB' || sqliteCode === 'SQLITE_CORRUPT') {
+    return storeUnreadable(
+      `The store's database file could not be read as SQLite: ${message}. It is corrupt, truncated, or not a Lacre store.`,
+      { sqlite_code: sqliteCode },
+    );
+  }
+  if (/Could not locate the bindings file|better_sqlite3\.node|NODE_MODULE_VERSION/.test(message)) {
+    return new LacreError({
+      code: 'NATIVE_DEPENDENCY_MISSING',
+      message:
+        'The native SQLite binding (better-sqlite3) is missing or was built for a different Node.js version. ' +
+        `Lacre cannot open a store without it. Cause: ${message.split('\n')[0]}`,
+      retryable: false,
+      fix: {
+        note:
+          'Nothing was executed: no key or receipt was read or written (an empty store directory may exist). ' +
+          'Build the binding for this Node.js version, then retry. ' +
+          'With npm: npm rebuild better-sqlite3 (and do not install with --ignore-scripts). ' +
+          'With pnpm, which blocks dependency build scripts by default: pnpm approve-builds, allow better-sqlite3, ' +
+          'then pnpm rebuild better-sqlite3.',
+      },
+    });
+  }
   return new LacreError({
     code: 'INVALID_INPUT',
     message,

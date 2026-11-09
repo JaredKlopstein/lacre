@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { BRAND } from '../../src/brand';
+import { bundleSale } from '../../src/bundle-sale';
 import { LEGAL, SECURITY_REPORT_URL } from '../../src/legal';
 import { CLOUD_MAX_ANCHOR_MINUTES, EARLY_ACCESS_LABEL } from '../../src/plans';
 import { PROOF_TABLE } from '../../src/proof-table';
@@ -11,7 +12,8 @@ export const metadata: Metadata = {
   description: `The standards ${BRAND.name} is built on, the open-core boundary, what a self-hosted chain does and does not prove, how agent keys are handled, and how to report a vulnerability.`,
 };
 
-const STANDARDS = [
+/** The standards, with the RFC 3161 entry worded for whether bundles are on sale (src/bundle-sale.ts). */
+const standards = (bundleOpen: boolean) => [
   {
     name: 'RFC 8785',
     body: 'JSON Canonicalization Scheme. Every receipt is canonicalized before it is hashed or signed, so the same receipt always produces the same bytes. The verifier implements it separately from the code that writes receipts.',
@@ -30,7 +32,7 @@ const STANDARDS = [
   },
   {
     name: 'RFC 3161',
-    body: 'Trusted timestamps from an authority the operator does not control anchor the chain head when you buy an evidence bundle, and, once Cloud is available, continuously. The verifier checks the full token offline and reports whether the authority is in your trust list separately from whether the token is sound, because a bundle can embed a self-signed root.',
+    body: `Trusted timestamps from an authority the operator does not control ${bundleOpen ? 'anchor the chain head when you buy an evidence bundle' : 'will anchor the chain head when you buy an evidence bundle, once bundles open (nothing can be bought yet)'}, and, once Cloud is available, continuously. The verifier checks the full token offline and reports whether the authority is in your trust list separately from whether the token is sound, because a bundle can embed a self-signed root.`,
   },
 ] as const;
 
@@ -110,7 +112,7 @@ export default function SecurityPage() {
       <section aria-label="Standards">
         <h2>Standards</h2>
         <ul>
-          {STANDARDS.map((s) => (
+          {standards(bundleSale().open).map((s) => (
             <li key={s.name}>
               <h3>{s.name}</h3>
               <p>{s.body}</p>

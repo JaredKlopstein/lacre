@@ -10,9 +10,9 @@ export function isDue(top: number, viewportHeight: number): boolean {
 /**
  * Restrained scroll reveal. Once mounted it sets data-reveal-ready on <html>,
  * then marks each [data-reveal] element data-revealed as it scrolls into view.
- * app/globals.css hides unrevealed elements only under html[data-reveal-ready]
- * inside prefers-reduced-motion: no-preference, so without JavaScript, or with
- * reduced motion, everything is visible from first paint. Renders nothing.
+ * app/globals.css no longer hides unrevealed elements (fading them out failed
+ * colour contrast mid-fade), so everything is visible from first paint, with or
+ * without JavaScript or reduced motion. Renders nothing.
  *
  * Anything at or above the reveal line is shown, not only what intersects: a
  * jump (an anchor link, End, a fast fling) can carry an element from below the

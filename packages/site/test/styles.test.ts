@@ -193,7 +193,7 @@ describe('global stylesheet', () => {
     expect(html).toContain('<nav aria-label="Cloud billing period">');
   });
 
-  it('hides [data-reveal] content only under html[data-reveal-ready] inside prefers-reduced-motion: no-preference', () => {
+  it('never hides [data-reveal] content, and scopes reveal rules to html[data-reveal-ready] inside prefers-reduced-motion: no-preference', () => {
     const motion = media('(prefers-reduced-motion: no-preference)');
     // Every rule that mentions [data-reveal], anywhere, must be inside that query and scoped to reveal-ready.
     const outside = rules.replace(`@media (prefers-reduced-motion: no-preference) {${motion}}`, '');
@@ -201,7 +201,11 @@ describe('global stylesheet', () => {
     const revealRules = [...motion.matchAll(/([^{}]*\[data-reveal\][^{}]*)\{([^}]*)\}/g)];
     expect(revealRules.length).toBeGreaterThan(0);
     for (const [, selector] of revealRules) expect(selector!.trim()).toMatch(/^html\[data-reveal-ready\] /);
-    expect(block('html[data-reveal-ready] [data-reveal]:not([data-revealed])', motion)).toContain('opacity: 0');
+    // No reveal rule changes opacity. Hiding unrevealed steps faded them out after
+    // hydration, and axe measured their contrast mid-fade as a serious failure on
+    // /how-it-works. The steps keep full contrast whatever the scroll or timing.
+    for (const [, , body] of revealRules) expect(body).not.toMatch(/opacity\s*:/);
+    expect(motion).not.toContain('[data-reveal]:not([data-revealed])');
     // Hover lift and press only animate there too.
     expect(outside).not.toMatch(/:hover \{[^}]*translateY|:active[^{]*\{[^}]*translateY/);
   });

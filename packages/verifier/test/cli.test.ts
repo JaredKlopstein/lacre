@@ -74,10 +74,37 @@ describe('lacre-verify bundle mode: existing behavior', () => {
     expect(r.out).toBe('');
   });
 
+  it('exits 2 on a file that is not JSON, with no verdict', () => {
+    writeFileSync(path('not-json.json'), '{"format":');
+    const r = cli([path('not-json.json'), '--json']);
+    expect(r.code).toBe(2);
+    expect(r.err).toMatch(/could not read/);
+    const body = JSON.parse(r.out) as { ok: boolean; error: { code: string }; verdict?: string };
+    expect(body).toMatchObject({ ok: false, error: { code: 'BUNDLE_UNREADABLE' } });
+    expect(body.verdict).toBeUndefined();
+  });
+
+  // Fail closed: a JSON document that is not a bundle gets a verdict, so a
+  // script reading stdout under --json always has one to read.
+  it('exits 1 with a VERIFICATION FAILED verdict on JSON that is not a bundle', () => {
+    writeFileSync(path('not-a-bundle.json'), '{"hello":"world"}');
+    const r = cli([path('not-a-bundle.json'), '--json']);
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.out)).toMatchObject({ ok: false, verdict: 'VERIFICATION FAILED' });
+    expect(r.out).toMatch(/unknown bundle format/);
+  });
+
   it('exits 0 on --help and 2 with no arguments, describing every exit code', () => {
     const help = cli(['--help']);
     expect(help.code).toBe(0);
     expect(help.out).toMatch(/0 verified\s+1 verification failed\s+2 bundle unreadable or bad arguments/);
+    // The help says where the line between 1 and 2 falls, naming each exit-2
+    // code the CLI emits; the tests above and below pin the behavior itself.
+    const exits = help.out.replace(/\s+/g, ' ');
+    expect(exits).toContain('1 A VERIFICATION FAILED verdict saying why, including for valid JSON that is not a bundle.');
+    expect(exits).toContain('2 No verdict. The bundle could not be read or is not JSON (BUNDLE_UNREADABLE)');
+    expect(exits).toContain('a --trust file could not be read or holds no certificate (TRUST_FILE_UNREADABLE)');
+    expect(exits).toContain('or an option was wrong (USAGE).');
     const none = cli([]);
     expect(none.code).toBe(2);
     expect(none.out).toMatch(/lacre-verify <bundle\.json> \[options\]/);
