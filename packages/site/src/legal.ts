@@ -2,8 +2,8 @@ import { BRAND } from './brand';
 
 /**
  * The facts the Terms, the Privacy Policy, the footer and security.txt need,
- * which only the owner can supply. Every value starts null; nothing here is
- * invented. While any required value is null, /terms and /privacy say they are a
+ * which only the owner can supply. Every value starts null and is set only from
+ * what the owner has supplied; nothing here is invented. While any required value is null, /terms and /privacy say they are a
  * draft not yet in effect and show a bracketed placeholder in each gap, and
  * /.well-known/security.txt lists only SECURITY_REPORT_URL rather than publish a
  * placeholder contact.
@@ -46,14 +46,15 @@ export interface LegalFacts {
 export const SECURITY_REPORT_URL = `${BRAND.repository}/security/advisories/new`;
 
 export const LEGAL: LegalFacts = {
-  entityName: null,
+  // Supplied by the owner on 2026-11-10. Every other value is still null.
+  entityName: 'Ascella Studios LLC',
   entityJurisdiction: null,
   contactEmail: null,
   securityEmail: null,
-  postalAddress: null,
+  postalAddress: '408 N Votech Drive, Watertown, WI 53098',
   effectiveDate: null,
   refundWindowDays: null,
-  governingLaw: null,
+  governingLaw: 'the laws of the State of Wisconsin',
   emailProvider: null,
   contactRetention: null,
   bundleRetention: null,

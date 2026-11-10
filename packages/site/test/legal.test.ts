@@ -37,14 +37,24 @@ const FILLED: LegalFacts = {
 const terms = () => renderToStaticMarkup(TermsPage());
 const privacy = () => renderToStaticMarkup(PrivacyPage());
 
+/** The facts the owner has supplied so far (2026-11-10). Every other value stays null. */
+const SUPPLIED: Partial<LegalFacts> = {
+  entityName: 'Ascella Studios LLC',
+  postalAddress: '408 N Votech Drive, Watertown, WI 53098',
+  governingLaw: 'the laws of the State of Wisconsin',
+};
+
 describe('owner-supplied facts', () => {
-  it('ship empty: no entity, address or email is invented', () => {
-    for (const value of Object.values(LEGAL)) expect(value).toBeNull();
-    expect(missingFacts()).toEqual([...REQUIRED_FACTS]);
+  it('carry exactly what the owner supplied, and nothing invented', () => {
+    for (const [key, value] of Object.entries(LEGAL)) {
+      expect(value, key).toBe(SUPPLIED[key as keyof LegalFacts] ?? null);
+    }
+    expect(missingFacts()).toEqual(REQUIRED_FACTS.filter((key) => !(key in SUPPLIED)));
   });
 
   it('render as a bracketed placeholder until set, then as the value', () => {
-    expect(fact('entityName')).toBe('[legal entity name: owner to supply]');
+    expect(fact('contactEmail')).toBe('[contact email: owner to supply]');
+    expect(fact('entityName')).toBe('Ascella Studios LLC');
     expect(fact('entityName', FILLED)).toBe('Example Labs LLC');
     expect(missingFacts(FILLED)).toEqual([]);
   });
@@ -62,7 +72,7 @@ describe('Terms and Privacy pages', () => {
     const html = render();
     expect(meta.title).toBe(title);
     expect(html).toMatch(/Draft, not yet in effect\./);
-    expect(html).toContain('[legal entity name: owner to supply]');
+    expect(html).toContain('[entity form and jurisdiction: owner to supply]');
     expect(html).toContain('[contact email: owner to supply]');
     expect(html).not.toMatch(/Effective \d{4}-\d{2}-\d{2}/);
   });
@@ -169,5 +179,27 @@ describe('/.well-known/security.txt', () => {
     const days = (Date.parse(expires) - now.getTime()) / 86_400_000;
     expect(days).toBeGreaterThan(0);
     expect(days).toBeLessThan(365);
+  });
+});
+
+describe('the supplied facts on the Terms and Privacy pages', () => {
+  it('Terms name Ascella Studios LLC, its postal address and Wisconsin law, and stay a draft', () => {
+    const html = terms().replace(/&#x27;/g, "'");
+    expect(html).toContain('is run by Ascella Studios LLC, [entity form and jurisdiction: owner to supply]');
+    expect(html).toContain(', or by post at 408 N Votech Drive, Watertown, WI 53098.');
+    expect(html).toContain('These terms are governed by the laws of the State of Wisconsin.');
+    expect(html).toMatch(/Draft, not yet in effect\./);
+  });
+
+  it('Privacy names Ascella Studios LLC and its postal address, and stays a draft', () => {
+    const html = privacy();
+    expect(html).toContain('Ascella Studios LLC, [entity form and jurisdiction: owner to supply], is responsible');
+    expect(html).toContain(' or write to 408 N Votech Drive, Watertown, WI 53098.');
+    expect(html).toMatch(/Draft, not yet in effect\./);
+  });
+
+  it('supplying these does not open the sale: the other required facts are still missing', () => {
+    expect(missingFacts().length).toBeGreaterThan(0);
+    expect(missingFacts()).toEqual(expect.arrayContaining(['contactEmail', 'effectiveDate', 'refundWindowDays']));
   });
 });
