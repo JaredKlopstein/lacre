@@ -1,9 +1,10 @@
 import Database from 'better-sqlite3';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { storeUnreadable } from '../errors.js';
 import * as schema from './schema.js';
 
 /** drizzle exposes the underlying better-sqlite3 handle as `$client`; the hot
@@ -14,7 +15,19 @@ export type Db = BetterSQLite3Database<typeof schema> & { $client: Database.Data
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../migrations');
 
 export function openDb(file: string): Db {
-  if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
+  if (file !== ':memory:') {
+    // SQLite opens a 0-byte file as an empty database: it would verify as a
+    // clean chain with no receipts, and migrating it would write a fresh store
+    // over what may be a truncated record. Refuse before anything is opened.
+    if (existsSync(file) && statSync(file).size === 0) {
+      throw storeUnreadable(
+        `The store's database file ${file} is empty (0 bytes). An empty file is not a Lacre store, and it was not ` +
+          'opened or changed: reading it would report a clean chain with no receipts.',
+        { db_path: file, size_bytes: 0 },
+      );
+    }
+    mkdirSync(dirname(file), { recursive: true });
+  }
 
   const sqlite = new Database(file);
 

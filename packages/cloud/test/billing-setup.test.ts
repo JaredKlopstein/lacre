@@ -399,8 +399,22 @@ describe('catalog sync', () => {
   });
 });
 
-describe('no secret ever lands in the repo', () => {
-  const root = fileURLToPath(new URL('../../..', import.meta.url));
+const repoRoot = fileURLToPath(new URL('../../..', import.meta.url));
+
+/** True in a git checkout. A source archive (GitHub's "Download ZIP", `git archive`) has no `.git`. */
+function insideGitCheckout(cwd: string): boolean {
+  try {
+    return execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd, encoding: 'utf8', stdio: 'pipe' }).trim() === 'true';
+  } catch {
+    return false;
+  }
+}
+
+// These scan what git tracks and ignores, which a source archive cannot answer.
+// They skip there, and only there: under CI they always run, so a CI checkout
+// that somehow lost .git fails instead of silently skipping the secret scan.
+describe.skipIf(!insideGitCheckout(repoRoot) && !process.env.CI)('no secret ever lands in the repo', () => {
+  const root = repoRoot;
 
   it('finds no live key, test key, webhook secret or price id in any tracked file', () => {
     const patterns = [

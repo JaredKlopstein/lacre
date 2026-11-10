@@ -4,9 +4,12 @@
 
 ## Context
 
-An evidence bundle can be bought today (`/checkout`, $15). A paid checkout
-records a bundle credit (`billing_bundle_credits`, written by the billing
-webhook), but nothing redeems it. The bundle is made by hand: the buyer emails
+An evidence bundle is priced at $15 (`/checkout`), but it is not on sale yet:
+checkout refuses every purchase until the owner's legal facts are set
+(`packages/site/src/legal.ts`), and no deployment has Stripe configured. Once
+it opens, a paid checkout records a bundle credit (`billing_bundle_credits`,
+written by the billing webhook), but nothing redeems it. The bundle is planned
+to be made by hand: the buyer emails
 their chain file (`lacre.db`, never `agent.key.json`), it is anchored with
 `lacre-cloud anchor now`, exported with `lacre-cloud bundle export`, and emailed
 back. The site says exactly that (`BUNDLE_FULFILMENT` in

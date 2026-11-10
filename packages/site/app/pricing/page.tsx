@@ -42,6 +42,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const cancelled = params.checkout === 'cancelled';
   // Read on each request, so the bundle opens by itself once checkout, sign-in and the Terms are ready.
   const sale = bundleSale();
+  const bundleHow = sale.open ? 'how a bundle is made today' : 'how a bundle will be made';
 
   return (
     <>
@@ -50,7 +51,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
         {cancelled && <p role="status">Checkout cancelled, nothing was charged.</p>}
         <p>
           Writing receipts and verifying them stays free on every plan. You pay for evidence a third
-          party can check: anchored evidence bundles (<a href={`#${BUNDLE_TODAY_ID}`}>how a bundle is made today</a>),
+          party can check: anchored evidence bundles (<a href={`#${BUNDLE_TODAY_ID}`}>{bundleHow}</a>),
           and later Cloud to run the collector and anchoring for you.
         </p>
         <p data-definition="evidence-bundle">{BUNDLE_DEFINITION}</p>
@@ -104,7 +105,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
         ))}
       </section>
       <section aria-labelledby={BUNDLE_TODAY_ID}>
-        <h2 id={BUNDLE_TODAY_ID}>How a bundle is made today</h2>
+        <h2 id={BUNDLE_TODAY_ID}>{bundleHow.charAt(0).toUpperCase() + bundleHow.slice(1)}</h2>
         <p>{BUNDLE_FULFILMENT}</p>
       </section>
       {/* Its own section under the cards, so opening it never stretches the grid. */}

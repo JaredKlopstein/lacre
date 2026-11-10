@@ -239,12 +239,13 @@ A local chain is self-attested, and so is `lacre anchor now`. The open-source
 build ships only the `noop` anchor backend, which records an anchor that
 proves nothing. It has no RFC 3161 timestamp authority. A real anchor is an RFC
 3161 timestamp from an authority you do not control. That is Lacre Cloud's
-job, and Cloud is in early access and not on sale. What you can buy today is a
-single anchored evidence bundle, from the pricing page on the Lacre website.
-After checkout you are asked for your **chain file**. Its chain head is
-timestamped by a public RFC 3161 authority, and you get back a bundle that you,
-or anyone, can check offline as in section 3. The timestamp proves the chain
-existed when it was anchored, not earlier.
+job, and Cloud is in early access and not on sale. A single anchored evidence
+bundle is planned as a one-time purchase, but it is not on sale yet either:
+nothing can be bought today. When bundles open, the buyer is asked for their
+**chain file**. Its chain head is timestamped by a public RFC 3161 authority,
+and they get back a bundle that they, or anyone, can check offline as in
+section 3. The timestamp proves the chain existed when it was anchored, not
+earlier.
 
 The chain file is `lacre.db` in your store directory: `$LACRE_HOME`, or
 `~/.lacre` by default. It holds your receipts and your agents' public keys.

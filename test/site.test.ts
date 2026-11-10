@@ -17,8 +17,8 @@ import {
 
 const DOCS = new URL('../docs/', import.meta.url).pathname;
 const SITE = 'https://jaredklopstein.github.io/lacre';
-/** Where the landing page sends readers. Revamp 11b moves it to lacre.dev. */
-const MAIN_SITE = 'https://lacre-site.vercel.app/';
+/** Where the rename notice sends readers while no Lacre site deployment is serving. */
+const REPOSITORY = 'https://github.com/JaredKlopstein/lacre';
 
 const read = (name: string) => readFileSync(join(DOCS, name), 'utf8');
 
@@ -78,10 +78,13 @@ describe('index.html', () => {
     );
   });
 
-  it('says the product is now Lacre and points at the main site, in one URL', () => {
-    expect(html).toContain(`<link rel="canonical" href="${MAIN_SITE}">`);
-    expect(html).toContain(`Provenant is now Lacre. The main site is <a href="${MAIN_SITE}">`);
-    expect(html.match(/https:\/\/lacre-site\.vercel\.app[^"]*/g)).toEqual([MAIN_SITE, MAIN_SITE]);
+  // lacre-site.vercel.app answered 404 on 2026-11-08: no Lacre site deployment is
+  // serving. Until a canonical host is chosen and serving, the page names none and
+  // sends readers to the repository, which is.
+  it('says the product is now Lacre and points at the repository, not at an unserved host', () => {
+    expect(html).toContain(`Provenant is now Lacre. Source and docs are at <a href="${REPOSITORY}">`);
+    expect(html).not.toMatch(/<link rel="canonical"/);
+    expect(html).not.toMatch(/vercel\.app/);
   });
 
   it('never redirects on a timer, so the demo stays usable (WCAG 2.2.1)', () => {
@@ -263,9 +266,32 @@ describe('pricing cards', () => {
     expect(cloud).toContain('<strong>Early access</strong>: not on sale yet.');
     expect(cloud).toContain('Planned, not available yet');
     expect(cloud.indexOf('Planned, not available yet')).toBeLessThan(cloud.indexOf('<ul>'));
-    // The emphasis goes to the plan on sale today, not to one nobody can buy.
+    // The emphasis goes to the bundle, the offer meant to go on sale first.
     expect(html).toContain('<div class="tier paid" data-tier="bundle">');
     expect(html).toContain('<div class="tier" data-tier="cloud">');
+  });
+
+  // The page is static: it cannot know whether checkout is open, and it is closed
+  // until the owner's legal facts exist. So the card says so, and its terms read
+  // as planned, like Cloud's.
+  it('labels the bundle not on sale and its terms as planned', () => {
+    const bundle = cards().get('bundle')!;
+    // All three conditions bundleSale() checks (packages/site/src/bundle-sale.ts): Terms, payment, sign-in.
+    expect(bundle).toContain(
+      '<strong>Not on sale yet</strong>: bundles open once the Terms are final and both payment and account sign-in are set up.',
+    );
+    expect(bundle).toContain('Nothing can be bought or charged today.');
+    expect(bundle.indexOf('Planned, not available yet')).toBeGreaterThan(-1);
+    expect(bundle.indexOf('Planned, not available yet')).toBeLessThan(bundle.indexOf('<ul>'));
+  });
+
+  it('does not say anything is charged for today', () => {
+    expect(html).not.toContain('That is the only thing we charge for.');
+    expect(html).toContain('nothing is on sale yet');
+  });
+
+  it('does not offer a contact route that does not exist', () => {
+    expect(cards().get('enterprise')!).toContain('no contact address is published yet');
   });
 
   it('says how a bundle arrives, and that the signing key never leaves the buyer', () => {

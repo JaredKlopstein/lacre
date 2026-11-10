@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BRAND } from '../../src/brand';
+import { bundleSale } from '../../src/bundle-sale';
 import { ChainDiagram } from '../../src/chain-diagram';
 import { BUNDLE_FORMAT, CLOUD_MAX_ANCHOR_MINUTES, EARLY_ACCESS_LABEL } from '../../src/plans';
 import { Reveal } from '../../src/reveal';
@@ -15,7 +16,8 @@ export const metadata: Metadata = {
   description: `How ${BRAND.name} turns agent actions into evidence anyone can verify offline.`,
 };
 
-const STEPS = [
+/** The steps, worded for whether bundles are on sale (src/bundle-sale.ts). */
+const steps = (bundleOpen: boolean) => [
   {
     title: 'Record',
     snippet: 'signature = Ed25519(agent key, JCS(receipt))',
@@ -29,12 +31,12 @@ const STEPS = [
   {
     title: 'Anchor',
     snippet: 'RFC 3161 token over JCS({ v, chain_id, seq, head_hash, receipt_count })',
-    body: `The chain head is timestamped with RFC 3161 by an authority the operator does not control. Today that happens when you buy an evidence bundle: we anchor the head of the chain you send us. ${CLOUD_EARLY} is planned to anchor automatically, at most every ${CLOUD_MAX_ANCHOR_MINUTES} minutes. The timestamp covers a statement that binds the chain id, position, head hash and receipt count, so a genuine token cannot be replayed against another chain or another position. Re-anchoring a position whose head has changed is refused rather than silently allowed.`,
+    body: `The chain head is timestamped with RFC 3161 by an authority the operator does not control. ${bundleOpen ? 'Today that happens when you buy an evidence bundle: we anchor the head of the chain you send us.' : 'That will happen when you buy an evidence bundle, once bundles open: we will anchor the head of the chain you send us. Nothing can be bought yet.'} ${CLOUD_EARLY} is planned to anchor automatically, at most every ${CLOUD_MAX_ANCHOR_MINUTES} minutes. The timestamp covers a statement that binds the chain id, position, head hash and receipt count, so a genuine token cannot be replayed against another chain or another position. Re-anchoring a position whose head has changed is refused rather than silently allowed.`,
   },
   {
     title: 'Evidence bundle',
     snippet: 'receipts + public keys + timestamp tokens → one JSON file',
-    body: `An evidence bundle is a range of the chain exported as ${BUNDLE_FORMAT}. Today you get one by buying a bundle; we send it back once the chain is anchored. The bundle is self-contained: the receipts as their exact canonical bytes, the agents’ public keys and the timestamp tokens. The one thing it does not carry is the timestamp authority’s trust anchor, because a bundle that vouched for itself would prove nothing.`,
+    body: `An evidence bundle is a range of the chain exported as ${BUNDLE_FORMAT}. ${bundleOpen ? 'Today you get one by buying a bundle; we send it back once the chain is anchored.' : 'Once bundles open, you will get one by buying a bundle; we will send it back once the chain is anchored.'} The bundle is self-contained: the receipts as their exact canonical bytes, the agents’ public keys and the timestamp tokens. The one thing it does not carry is the timestamp authority’s trust anchor, because a bundle that vouched for itself would prove nothing.`,
   },
   {
     title: 'Verify offline',
@@ -59,7 +61,7 @@ export default function HowItWorksPage() {
       <section aria-label="Steps">
         {/* role="list" keeps the list announced as one once the timeline styling removes its markers. */}
         <ol role="list">
-          {STEPS.map((step) => (
+          {steps(bundleSale().open).map((step) => (
             <li key={step.title} data-reveal>
               <h2>{step.title}</h2>
               <p>{step.body}</p>

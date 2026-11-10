@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
+import CheckoutPage from '../app/checkout/page.js';
 import HowItWorksPage from '../app/how-it-works/page.js';
 import PricingPage from '../app/pricing/page.js';
 import SecurityPage from '../app/security/page.js';
@@ -12,6 +13,10 @@ import {
   OFF_SALE_PLANS,
   pricingAnnualOverageDisclosure,
 } from '../src/plans.js';
+import { fillLegalFacts, stubCheckoutEnv, stubSignInEnv } from './sale-env.js';
+
+// The checkout page reads the request (to stay dynamic); no cookie, so no account.
+vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 
 /**
  * Honest copy pass (13): Cloud is never described as working while it is off
@@ -29,6 +34,7 @@ const pages = {
   security: renderToStaticMarkup(SecurityPage()),
   pricing: renderToStaticMarkup(await PricingPage({ searchParams: Promise.resolve({}) })),
   pricingAnnual: renderToStaticMarkup(await PricingPage({ searchParams: Promise.resolve({ billing: 'annual' }) })),
+  checkout: renderToStaticMarkup(await CheckoutPage({ searchParams: Promise.resolve({}) })),
 };
 
 describe('Cloud is never described as working', () => {
@@ -63,13 +69,44 @@ describe('the evidence bundle, described one way', () => {
     }
   });
 
-  it('says how a bundle is made today, linked from the pricing intro', () => {
-    // "today" left the claim: bundles may not be on sale yet (src/bundle-sale.ts); the link still says how one is made.
-    expect(pages.pricing).toContain(`anchored evidence bundles (<a href="#${BUNDLE_TODAY_ID}">how a bundle is made today</a>)`);
-    expect(pages.pricing).toContain(`<h2 id="${BUNDLE_TODAY_ID}">How a bundle is made today</h2>`);
+  it('while bundles are closed, says how a bundle will be made, and never "today"', () => {
+    // The default test environment has no legal facts, so the sale is closed (src/bundle-sale.ts).
+    expect(pages.pricing).toContain(`anchored evidence bundles (<a href="#${BUNDLE_TODAY_ID}">how a bundle will be made</a>)`);
+    expect(pages.pricing).toContain(`<h2 id="${BUNDLE_TODAY_ID}">How a bundle will be made</h2>`);
     expect(text(pages.pricing)).toContain(BUNDLE_FULFILMENT);
     expect(BUNDLE_FULFILMENT).toContain(`within ${BUNDLE_DELIVERY_BUSINESS_DAYS} business days`);
-    expect(text(pages.howItWorks)).toContain('Today that happens when you buy an evidence bundle');
+    for (const [name, html] of Object.entries(pages)) {
+      expect(text(html), name).not.toMatch(/how a bundle is made today|Today (that happens|you get one) /i);
+    }
+    // Closed checkout links to the same section, worded the same way.
+    expect(pages.checkout).toContain('<section data-sale="closed">');
+    expect(pages.checkout).toContain(`<a href="/pricing#${BUNDLE_TODAY_ID}">how a bundle will be made</a>`);
+    // Security: the RFC 3161 entry does not say you can buy a bundle now.
+    expect(text(pages.security)).toContain(
+      'will anchor the chain head when you buy an evidence bundle, once bundles open (nothing can be bought yet)',
+    );
+    expect(text(pages.security)).not.toMatch(/control anchor the chain head when you buy/);
+    expect(text(pages.howItWorks)).toContain('once bundles open: we will anchor the head of the chain you send us. Nothing can be bought yet.');
+    expect(text(pages.howItWorks)).toContain('Once bundles open, you will get one by buying a bundle');
+  });
+
+  it('once bundles are open, says how a bundle is made today', async () => {
+    const restore = fillLegalFacts();
+    stubCheckoutEnv();
+    stubSignInEnv();
+    try {
+      const pricing = renderToStaticMarkup(await PricingPage({ searchParams: Promise.resolve({}) }));
+      const howItWorks = text(renderToStaticMarkup(HowItWorksPage()));
+      const security = text(renderToStaticMarkup(SecurityPage()));
+      expect(security).toContain('control anchor the chain head when you buy an evidence bundle, and, once Cloud');
+      expect(security).not.toContain('once bundles open');
+      expect(pricing).toContain(`<h2 id="${BUNDLE_TODAY_ID}">How a bundle is made today</h2>`);
+      expect(howItWorks).toContain('Today that happens when you buy an evidence bundle');
+      expect(howItWorks).toContain('Today you get one by buying a bundle');
+    } finally {
+      restore();
+      vi.unstubAllEnvs();
+    }
   });
 
   it('never asks for a signing key and never overclaims the timestamp', () => {

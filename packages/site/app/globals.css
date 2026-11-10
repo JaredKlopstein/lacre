@@ -915,17 +915,13 @@ section[aria-label='Limits'] > h2 {
 
 /*
  * Restrained motion, only when the visitor has not asked for less. Reveal
- * (src/reveal.tsx) sets data-reveal-ready on <html> once it runs, so nothing is
- * hidden without JavaScript; cards lift on hover and buttons press.
+ * (src/reveal.tsx) sets data-reveal-ready on <html> once it runs. Unrevealed
+ * steps are never hidden: fading them out cost them their contrast mid-fade.
+ * Cards lift on hover and buttons press.
  */
 @media (prefers-reduced-motion: no-preference) {
   html[data-reveal-ready] [data-reveal] {
     transition: opacity 0.5s ease-out, transform 0.5s ease-out;
-  }
-
-  html[data-reveal-ready] [data-reveal]:not([data-revealed]) {
-    opacity: 0;
-    transform: translateY(0.75rem);
   }
 
   section[aria-label='Plans'] > article,

@@ -18,9 +18,9 @@
 <meta name="description" content="Signed, hash-chained receipts of what your AI agents actually did. Anyone can verify them offline, without trusting you.">
 <meta property="og:title" content="Lacre — prove what your agents did">
 <meta property="og:description" content="An agent's log is only as honest as whoever holds the disk. Lacre makes it evidence.">
-<!-- MAIN_SITE: the main site, named here and in the notice below. Change both
-     together (revamp 11b moves them to lacre.dev); test/site.test.ts pins them. -->
-<link rel="canonical" href="https://lacre-site.vercel.app/">
+<!-- No canonical link and no link to a main site: no Lacre site deployment is
+     serving yet, so this page is its own canonical. Add both back, together,
+     once a canonical host is chosen and serving; test/site.test.ts pins this. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap" rel="stylesheet">
@@ -188,7 +188,7 @@
 
 <header>
   <div class="moved">
-    <p class="wrap">Provenant is now Lacre. The main site is <a href="https://lacre-site.vercel.app/">lacre-site.vercel.app</a>.</p>
+    <p class="wrap">Provenant is now Lacre. Source and docs are at <a href="https://github.com/JaredKlopstein/lacre">github.com/JaredKlopstein/lacre</a>.</p>
   </div>
   <div class="wrap masthead">
     <div class="logo">Lacre <span>TAMPER-EVIDENT RECEIPTS</span></div>
@@ -296,7 +296,8 @@ FAILURES (1)
       <p>
         That split is technical, not artificial. A chain kept on your own disk attests to itself —
         it cannot rule out that you rewrote it. An external timestamp from an authority you don't
-        control can. That is the only thing we charge for.
+        control can. That is the only thing Lacre will charge for, and nothing is on sale yet:
+        today Lacre is open source, run from source.
       </p>
     </div>
 
@@ -315,6 +316,8 @@ FAILURES (1)
       <div class="tier paid" data-tier="bundle">
         <h4>Evidence bundle</h4>
         <div class="price">$15 each</div>
+        <p class="status"><strong>Not on sale yet</strong>: bundles open once the Terms are final and both payment and account sign-in are set up. Nothing can be bought or charged today.</p>
+        <p class="planned">Planned, not available yet</p>
         <ul>
           <li>Pay as you go, no subscription</li>
           <li>Your chain head timestamped by a public RFC&nbsp;3161 authority</li>
@@ -343,6 +346,7 @@ FAILURES (1)
       <div class="tier" data-tier="enterprise">
         <h4>Enterprise</h4>
         <div class="price">Contact us</div>
+        <p class="status"><strong>Not open yet</strong>: no contact address is published yet.</p>
         <ul>
           <li>Retention and anchoring cadence set by contract</li>
           <li>Volume beyond the Cloud fair-use cap</li>

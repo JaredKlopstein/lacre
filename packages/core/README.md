@@ -51,8 +51,9 @@ could otherwise change what gets recorded — so the documented shorthands
 including full RFC 3161 timestamp checking. Verifying is never paywalled.
 
 **Paid — Lacre Cloud (early access, not on sale):** RFC 3161 anchoring against
-a real timestamp authority, and evidence bundle export (JSON, PDF, HTML). On
-sale today: a single anchored evidence bundle (see below).
+a real timestamp authority, and evidence bundle export (JSON, PDF, HTML). A
+single anchored evidence bundle is planned as a one-time purchase, but it is not
+on sale yet either: nothing can be bought or charged today (see below).
 
 **Partly built, and not to be presented as working** — the collector
 authenticates correctly (RFC 9421, with replay and body-swap rejection tested)
@@ -76,13 +77,14 @@ lacre chain verify --json
 node packages/verifier/bin/lacre-verify.mjs evidence.json --trust digicert-root.pem
 ```
 
-**The paid path today is an evidence bundle.** Anchoring a chain to an RFC 3161
+**The paid path, once it opens, is an evidence bundle.** Anchoring a chain to an RFC 3161
 authority you don't control, and exporting it as an evidence bundle, is Lacre
 Cloud's job. Cloud is in early access and not on sale. Its source in
 `packages/cloud` is published for inspection only: its licence grants no right
-to run it. What you can buy now is a single anchored bundle. You send your
-chain file (`lacre.db`, never `agent.key.json`) and get back a bundle that
-`lacre-verify` checks offline. The open-source `lacre anchor now` writes only a
+to run it. A single anchored bundle is planned as a one-time purchase, but it
+is not on sale yet: nothing can be bought or charged today. When bundles open,
+the buyer sends their chain file (`lacre.db`, never `agent.key.json`) and gets
+back a bundle that `lacre-verify` checks offline. The open-source `lacre anchor now` writes only a
 `noop` anchor, which proves nothing. See
 [Make it evidence](https://github.com/JaredKlopstein/lacre/blob/main/docs/getting-started.md#5-make-it-evidence).
 
@@ -233,6 +235,17 @@ pnpm run ci     # boundaries, typecheck, tests
 Test-first is mandatory for anything touching the hash chain, fencing tokens,
 idempotency or signature verification. Those are the only places correctness
 genuinely matters, and the places where a bug destroys the product's credibility.
+
+**Native dependency.** `@lacre/core` stores receipts with `better-sqlite3`, a
+native module whose install script fetches or builds its binding. This
+workspace allows that build in `pnpm-workspace.yaml`. A project that installs
+`@lacre/core` with pnpm, which blocks dependency build scripts by default, or
+with `npm install --ignore-scripts`, must build it. With pnpm: run
+`pnpm approve-builds`, allow `better-sqlite3`, then run
+`pnpm rebuild better-sqlite3`. With npm: run `npm rebuild better-sqlite3`, and
+do not install with `--ignore-scripts`. Until then every command that opens a
+store exits `1` with `NATIVE_DEPENDENCY_MISSING`, whose fix says exactly this.
+`@lacre/verifier` has no native dependency.
 
 ## License
 
