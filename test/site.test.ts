@@ -290,8 +290,10 @@ describe('pricing cards', () => {
     expect(html).toContain('nothing is on sale yet');
   });
 
-  it('does not offer a contact route that does not exist', () => {
-    expect(cards().get('enterprise')!).toContain('no contact address is published yet');
+  it('offers the owner\'s published contact address, and no other contact route', () => {
+    const enterprise = cards().get('enterprise')!;
+    expect(enterprise).toContain('<a href="mailto:contact@frontierforge.tech">contact@frontierforge.tech</a>');
+    expect(html.match(/mailto:[^"]+/g)).toEqual(['mailto:contact@frontierforge.tech']);
   });
 
   it('says how a bundle arrives, and that the signing key never leaves the buyer', () => {

@@ -5,7 +5,7 @@ import { PRICE_ENV } from '@lacre/cloud/dist/billing/config.js';
 import { bundleSale } from '../src/bundle-sale.js';
 import { LEGAL, missingFacts } from '../src/legal.js';
 import PricingPage from '../app/pricing/page.js';
-import { TEST_FACTS, clearSaleEnv, fillLegalFacts, stubCheckoutEnv, stubSignInEnv } from './sale-env.js';
+import { TEST_FACTS, clearLegalFacts, clearSaleEnv, fillLegalFacts, stubCheckoutEnv, stubSignInEnv } from './sale-env.js';
 
 /**
  * Whether a bundle can be bought here: the legal facts filled in, checkout
@@ -38,11 +38,17 @@ const open = () => {
 };
 
 describe('bundle sale', () => {
-  it('is closed in this repository as shipped: the legal facts are null', () => {
+  it('is closed while any legal fact is missing, even with checkout and sign-in configured', () => {
+    restoreFacts = clearLegalFacts();
     expect(missingFacts(LEGAL).length).toBeGreaterThan(0);
     stubCheckoutEnv();
     stubSignInEnv();
     expect(bundleSale()).toEqual({ open: false, blockers: ['terms'] });
+  });
+
+  it('as shipped, every legal fact is supplied, so only checkout and sign-in block the sale', () => {
+    expect(missingFacts(LEGAL)).toEqual([]);
+    expect(bundleSale({})).toEqual({ open: false, blockers: ['checkout', 'sign-in'] });
   });
 
   it('is closed with only DATABASE_URL set, as production is today', () => {

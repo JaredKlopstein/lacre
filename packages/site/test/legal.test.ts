@@ -10,6 +10,7 @@ import { LegalNotice } from '../src/legal-notice.js';
 import { BRAND } from '../src/brand.js';
 import { LEGAL, REQUIRED_FACTS, SECURITY_REPORT_URL, fact, missingFacts, type LegalFacts } from '../src/legal.js';
 import { buildSecurityTxt } from '../src/security-txt.js';
+import { bundleSale } from '../src/bundle-sale.js';
 
 /**
  * #96 (draft): Terms, Privacy, the footer's legal links and security.txt. The
@@ -37,23 +38,36 @@ const FILLED: LegalFacts = {
 const terms = () => renderToStaticMarkup(TermsPage());
 const privacy = () => renderToStaticMarkup(PrivacyPage());
 
-/** The facts the owner has supplied so far (2026-11-10). Every other value stays null. */
-const SUPPLIED: Partial<LegalFacts> = {
+/**
+ * The facts the owner supplied (2026-11-10). The mailbox provider is the host of
+ * the inbox the owner named for chain files (contact@frontierforge.tech), read
+ * from its MX record, for the owner to confirm in review.
+ */
+const SUPPLIED: LegalFacts = {
   entityName: 'Ascella Studios LLC',
+  entityJurisdiction: 'a Wisconsin limited liability company',
+  contactEmail: 'contact@frontierforge.tech',
+  securityEmail: 'contact@frontierforge.tech',
   postalAddress: '408 N Votech Drive, Watertown, WI 53098',
+  effectiveDate: '2026-11-14',
+  refundWindowDays: 30,
   governingLaw: 'the laws of the State of Wisconsin',
+  emailProvider: 'Resend',
+  contactRetention: '90 days',
+  bundleRetention: '90 days',
+  mailboxProvider: 'Microsoft 365 (Exchange Online)',
 };
 
 describe('owner-supplied facts', () => {
   it('carry exactly what the owner supplied, and nothing invented', () => {
     for (const [key, value] of Object.entries(LEGAL)) {
-      expect(value, key).toBe(SUPPLIED[key as keyof LegalFacts] ?? null);
+      expect(value, key).toBe(SUPPLIED[key as keyof LegalFacts]);
     }
-    expect(missingFacts()).toEqual(REQUIRED_FACTS.filter((key) => !(key in SUPPLIED)));
+    expect(missingFacts()).toEqual([]);
   });
 
   it('render as a bracketed placeholder until set, then as the value', () => {
-    expect(fact('contactEmail')).toBe('[contact email: owner to supply]');
+    expect(fact('contactEmail', { ...LEGAL, contactEmail: null })).toBe('[contact email: owner to supply]');
     expect(fact('entityName')).toBe('Ascella Studios LLC');
     expect(fact('entityName', FILLED)).toBe('Example Labs LLC');
     expect(missingFacts(FILLED)).toEqual([]);
@@ -68,13 +82,12 @@ describe('Terms and Privacy pages', () => {
   it.each([
     ['Terms', terms, termsMetadata],
     ['Privacy', privacy, privacyMetadata],
-  ] as const)('%s says it is a draft not in effect while facts are missing, with placeholders', (title, render, meta) => {
+  ] as const)('%s takes effect on 2026-11-14 with every fact supplied, and shows no placeholder', (title, render, meta) => {
     const html = render();
     expect(meta.title).toBe(title);
-    expect(html).toMatch(/Draft, not yet in effect\./);
-    expect(html).toContain('[entity form and jurisdiction: owner to supply]');
-    expect(html).toContain('[contact email: owner to supply]');
-    expect(html).not.toMatch(/Effective \d{4}-\d{2}-\d{2}/);
+    expect(html).toContain('<p>Effective 2026-11-14.</p>');
+    expect(html).not.toMatch(/Draft, not yet in effect/);
+    expect(html).not.toMatch(/owner to supply/);
   });
 
   it('the notice switches to the effective date once every required fact is supplied', () => {
@@ -86,7 +99,11 @@ describe('Terms and Privacy pages', () => {
   it('Terms cover refunds and cancellation, and state what a receipt does not prove', () => {
     const html = terms();
     expect(html).toContain('<h2>Refunds and cancellation</h2>');
-    expect(html).toContain('[refund window in days: owner to supply]');
+    expect(html).toContain(
+      'You can request a refund within 30 days of purchase by writing to contact@frontierforge.tech, for an evidence bundle we have not yet delivered.',
+    );
+    // A delivered bundle's timestamp has been issued and cannot be withdrawn.
+    expect(html).toContain('A delivered bundle is not refundable: its timestamp has already been issued and cannot be undone.');
     expect(html).toMatch(/cancelled at any time in the billing portal/);
     expect(html).toMatch(/does not show that an\s+action happened as described/);
   });
@@ -95,8 +112,8 @@ describe('Terms and Privacy pages', () => {
     const html = privacy();
     expect(html).toContain('Your chain file, if you buy an evidence bundle.');
     expect(html).toContain('It never holds a signing key, and we never ask for one.');
-    expect(html).toContain('[chain file and bundle retention: owner to supply]');
-    expect(html).toContain('[mailbox provider for chain files: owner to supply]');
+    expect(html).toMatch(/we keep the chain file and the bundle for\s+90 days/);
+    expect(html).toContain('Microsoft 365 (Exchange Online), which hosts the inbox that receives chain files for evidence bundles.');
     expect(html).toContain('We receive them only if you send us your chain file');
     expect(html).not.toContain('we never receive them');
     expect(REQUIRED_FACTS).toContain('bundleRetention');
@@ -106,7 +123,7 @@ describe('Terms and Privacy pages', () => {
   it('Privacy names what is collected, the processors, and the one essential cookie', () => {
     const html = privacy();
     for (const processor of ['Vercel', 'Neon', 'Stripe']) expect(html).toContain(processor);
-    expect(html).toContain('[sign-in email provider: owner to supply]');
+    expect(html).toMatch(/Resend[^<]*sign-in/);
     expect(html).toMatch(/No analytics or advertising cookies/);
     expect(html).toMatch(/One essential cookie keeps you signed in for up to seven days/);
   });
@@ -129,9 +146,8 @@ describe('footer and checkout links', () => {
     expect(legalNav).toContain('href="/security#report-a-vulnerability">Report a vulnerability</a>');
   });
 
-  it('labels the enterprise form as sales, not "Contact", until a contact email is set', () => {
-    expect(legalNav).toContain('href="/enterprise">Sales and enterprise</a>');
-    expect(legalNav).not.toMatch(/>Contact<\/a>/);
+  it('links Contact to the contact email now that it is set', () => {
+    expect(legalNav).toContain('href="mailto:contact@frontierforge.tech">Contact</a>');
   });
 
   it('checkout links the Terms and the Privacy Policy', () => {
@@ -145,15 +161,14 @@ describe('/.well-known/security.txt', () => {
   // It used to answer 404 while LEGAL.securityEmail was null. GitHub private
   // vulnerability reporting is now enabled on the repository, so there is a real,
   // non-personal contact to publish without inventing an address.
-  it('is published with GitHub private vulnerability reporting as the Contact, inventing no email', async () => {
+  it('lists the security email first, then GitHub private vulnerability reporting', async () => {
     const res = securityTxt();
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8');
     const body = await res.text();
     expect(SECURITY_REPORT_URL).toBe('https://github.com/JaredKlopstein/lacre/security/advisories/new');
-    expect(body.split('\n')[0]).toBe(`Contact: ${SECURITY_REPORT_URL}`);
-    expect(LEGAL.securityEmail).toBeNull();
-    expect(body).not.toMatch(/mailto:|owner to supply/);
+    expect(body.split('\n').slice(0, 2)).toEqual(['Contact: mailto:contact@frontierforge.tech', `Contact: ${SECURITY_REPORT_URL}`]);
+    expect(body).not.toMatch(/owner to supply/);
   });
 
   it('has an RFC 9116 Expires under a year ahead, and no Canonical or Policy until the site has a domain', async () => {
@@ -183,23 +198,22 @@ describe('/.well-known/security.txt', () => {
 });
 
 describe('the supplied facts on the Terms and Privacy pages', () => {
-  it('Terms name Ascella Studios LLC, its postal address and Wisconsin law, and stay a draft', () => {
+  it('Terms name the entity, its form, contact, postal address and Wisconsin law', () => {
     const html = terms().replace(/&#x27;/g, "'");
-    expect(html).toContain('is run by Ascella Studios LLC, [entity form and jurisdiction: owner to supply]');
-    expect(html).toContain(', or by post at 408 N Votech Drive, Watertown, WI 53098.');
+    expect(html).toContain('is run by Ascella Studios LLC, a Wisconsin limited liability company');
+    expect(html).toContain('contact@frontierforge.tech, or by post at 408 N Votech Drive, Watertown, WI 53098.');
     expect(html).toContain('These terms are governed by the laws of the State of Wisconsin.');
-    expect(html).toMatch(/Draft, not yet in effect\./);
   });
 
-  it('Privacy names Ascella Studios LLC and its postal address, and stays a draft', () => {
+  it('Privacy names the entity, its contact and postal address, and 90-day contact retention', () => {
     const html = privacy();
-    expect(html).toContain('Ascella Studios LLC, [entity form and jurisdiction: owner to supply], is responsible');
-    expect(html).toContain(' or write to 408 N Votech Drive, Watertown, WI 53098.');
-    expect(html).toMatch(/Draft, not yet in effect\./);
+    expect(html).toContain('Ascella Studios LLC, a Wisconsin limited liability company, is responsible');
+    expect(html).toContain('contact@frontierforge.tech or write to 408 N Votech Drive, Watertown, WI 53098.');
+    expect(html).toMatch(/90 days/);
   });
 
-  it('supplying these does not open the sale: the other required facts are still missing', () => {
-    expect(missingFacts().length).toBeGreaterThan(0);
-    expect(missingFacts()).toEqual(expect.arrayContaining(['contactEmail', 'effectiveDate', 'refundWindowDays']));
+  it('the Terms being in effect does not by itself open the sale: checkout and sign-in still need configuring', () => {
+    expect(missingFacts()).toEqual([]);
+    expect(bundleSale({}).blockers).toEqual(['checkout', 'sign-in']);
   });
 });

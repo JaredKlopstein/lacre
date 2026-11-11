@@ -46,19 +46,20 @@ export interface LegalFacts {
 export const SECURITY_REPORT_URL = `${BRAND.repository}/security/advisories/new`;
 
 export const LEGAL: LegalFacts = {
-  // Supplied by the owner on 2026-11-10. Every other value is still null.
+  // Supplied by the owner on 2026-11-10. mailboxProvider is the host of the inbox
+  // the owner named for chain files (contact@frontierforge.tech), per its MX record.
   entityName: 'Ascella Studios LLC',
-  entityJurisdiction: null,
-  contactEmail: null,
-  securityEmail: null,
+  entityJurisdiction: 'a Wisconsin limited liability company',
+  contactEmail: 'contact@frontierforge.tech',
+  securityEmail: 'contact@frontierforge.tech',
   postalAddress: '408 N Votech Drive, Watertown, WI 53098',
-  effectiveDate: null,
-  refundWindowDays: null,
+  effectiveDate: '2026-11-14',
+  refundWindowDays: 30,
   governingLaw: 'the laws of the State of Wisconsin',
-  emailProvider: null,
-  contactRetention: null,
-  bundleRetention: null,
-  mailboxProvider: null,
+  emailProvider: 'Resend',
+  contactRetention: '90 days',
+  bundleRetention: '90 days',
+  mailboxProvider: 'Microsoft 365 (Exchange Online)',
 };
 
 /** Facts the documents cannot take effect without. The postal address is optional. */
