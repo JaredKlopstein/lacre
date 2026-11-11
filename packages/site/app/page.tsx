@@ -8,6 +8,7 @@ import {
   BUNDLE_OPENS_SOON,
   BUNDLE_TODAY_ID,
   EARLY_ACCESS_LABEL,
+  FIRST_BUNDLE_FREE,
   GETTING_STARTED_URL,
   OFF_SALE_PLANS,
   WAITLIST_HREF,
@@ -119,7 +120,11 @@ export default function HomePage() {
         </p>
         {bundleOpen ? (
           <p>
-            <strong>Evidence bundle: {BUNDLE_PRICE}.</strong> We timestamp the head of your chain with a public RFC
+            <strong>
+              Evidence bundle: {BUNDLE_PRICE}
+              {FIRST_BUNDLE_FREE ? ', and your first bundle is free' : ''}.
+            </strong>{' '}
+            We timestamp the head of your chain with a public RFC
             3161 authority and email the bundle back within {BUNDLE_DELIVERY_BUSINESS_DAYS} business days. It is made
             by hand today (<Link href={`/pricing#${BUNDLE_TODAY_ID}`}>how a bundle is made</Link>), and it proves the
             chain existed when it was anchored, not earlier.
@@ -128,7 +133,9 @@ export default function HomePage() {
           // Closed: say checkout is not open before any price, so the price never reads as an offer.
           <p>
             <strong>Evidence bundle: {BUNDLE_OPENS_SOON.toLowerCase()}.</strong> {BUNDLE_CLOSED_LINE} The planned
-            price is {BUNDLE_PRICE}. <Link href={`/pricing#${BUNDLE_TODAY_ID}`}>How a bundle will be made</Link>, or{' '}
+            price is {BUNDLE_PRICE}
+            {FIRST_BUNDLE_FREE ? ', and your first bundle is free' : ''}.{' '}
+            <Link href={`/pricing#${BUNDLE_TODAY_ID}`}>How a bundle will be made</Link>, or{' '}
             <Link href={WAITLIST_HREF}>tell me when bundles open</Link>.
           </p>
         )}

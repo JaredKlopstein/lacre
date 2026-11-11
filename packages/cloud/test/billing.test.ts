@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { computeInvoice, stripeCatalog, createCheckoutSession, type StripeLike } from '../src/billing/stripe.js';
 import {
-  PLANS, PAYG_BUNDLE_PRICE_USD, OVERAGE_BUNDLE_PRICE_USD, monthlyCost, NEVER_PAYWALLED,
+  PLANS, PAYG_BUNDLE_PRICE_USD, OVERAGE_BUNDLE_PRICE_USD, FREE_FIRST_BUNDLES, NINETY_DAY_PACKAGE, monthlyCost,
+  NEVER_PAYWALLED,
 } from '../src/pricing.js';
 
 describe('pricing shape', () => {
@@ -51,9 +52,25 @@ describe('pricing shape', () => {
     expect(Object.keys(PLANS).sort()).toEqual(['cloud', 'enterprise', 'free']);
   });
 
-  it('prices bundles at $15 pay-as-you-go and $10 overage', () => {
-    expect(PAYG_BUNDLE_PRICE_USD).toBe(15);
-    expect(OVERAGE_BUNDLE_PRICE_USD).toBe(10);
+  it('prices bundles at $5 pay-as-you-go after one free, and $5 overage, the same', () => {
+    expect(PAYG_BUNDLE_PRICE_USD).toBe(5);
+    expect(FREE_FIRST_BUNDLES).toBe(1);
+    expect(OVERAGE_BUNDLE_PRICE_USD).toBe(5);
+    // A subscriber never pays more for an extra bundle than someone without a plan.
+    expect(OVERAGE_BUNDLE_PRICE_USD).toBeLessThanOrEqual(PAYG_BUNDLE_PRICE_USD);
+  });
+
+  it('prices the 90-day package at $249 for 12 weekly anchors, outside the Stripe catalog', () => {
+    expect(NINETY_DAY_PACKAGE).toEqual({ priceUsd: 249, days: 90, weeklyAnchors: 12, anchorsKeptDaysAfterTerm: 90 });
+    // Sold through the owner's Payment Link, so no catalog price is generated for it.
+    expect(stripeCatalog().map((p) => p.price.unit_amount)).not.toContain(24900);
+  });
+
+  it('marks every Cloud and Enterprise feature that is not built yet as (planned)', () => {
+    const unbuilt = ['Managed collector', 'Hosted verifier page', 'SSO', 'On-prem anchor relay', 'Support SLA'];
+    const all = [...PLANS.cloud.features, ...PLANS.enterprise.features];
+    for (const name of unbuilt) expect(all, name).toContain(`${name} (planned)`);
+    for (const f of all) expect(f, f).not.toMatch(new RegExp(`^(${unbuilt.join('|')})$`));
   });
 
   it('anchors more often as the plan gets more serious', () => {
@@ -119,20 +136,20 @@ describe('bundle billing', () => {
     expect(inv.bundlesUsd).toBe(0);
   });
 
-  it('bills Cloud bundles beyond the allowance at $10 each', () => {
+  it('bills Cloud bundles beyond the allowance at $5 each', () => {
     const inv = cloudMonth(8);
     expect(inv.billableBundles).toBe(3);
-    expect(inv.bundlesUsd).toBe(30);
-    expect(inv.totalUsd).toBe(49 + 30);
+    expect(inv.bundlesUsd).toBe(15);
+    expect(inv.totalUsd).toBe(49 + 15);
   });
 
-  it('bills free-tier bundles pay-as-you-go at $15 each', () => {
+  it('bills free-tier bundles pay-as-you-go at $5 each', () => {
     const inv = computeInvoice('free', {
       retainedAgentIdentities: 1, receiptsThisMonth: 0, bundlesThisMonth: 2,
     });
     expect(inv.billableBundles).toBe(2);
-    expect(inv.bundlesUsd).toBe(30);
-    expect(inv.totalUsd).toBe(30);
+    expect(inv.bundlesUsd).toBe(10);
+    expect(inv.totalUsd).toBe(10);
     expect(inv.notes.join(' ')).toMatch(/pay-as-you-go/);
   });
 
@@ -141,12 +158,12 @@ describe('bundle billing', () => {
     const thisMonth = cloudMonth(8);
     expect(lastMonth.bundlesUsd).toBe(0);
     // Three unused last month do not cover this month's overage.
-    expect(thisMonth.bundlesUsd).toBe(30);
+    expect(thisMonth.bundlesUsd).toBe(15);
   });
 
   it('applies the monthly allowance on annual billing without pooling', () => {
     // Annual billing still includes 5 per calendar month, not 60 per year.
-    expect(cloudMonth(8).bundlesUsd).toBe(30);
+    expect(cloudMonth(8).bundlesUsd).toBe(15);
     const year = Array.from({ length: 12 }, () => cloudMonth(5));
     expect(year.reduce((sum, inv) => sum + inv.bundlesUsd, 0)).toBe(0);
   });
@@ -174,11 +191,11 @@ describe('stripe catalog', () => {
     expect(price(identity).recurring?.interval).toBe('month');
 
     const payg = catalog.find((c) => meta(c).kind === 'payg_bundle')!;
-    expect(price(payg).unit_amount).toBe(1500);
+    expect(price(payg).unit_amount).toBe(500);
     expect(price(payg).recurring).toBeUndefined();
 
     const overage = catalog.find((c) => meta(c).kind === 'overage_bundle')!;
-    expect(price(overage).unit_amount).toBe(1000);
+    expect(price(overage).unit_amount).toBe(500);
     // Metered monthly: each bundle beyond the allowance is one meter event.
     expect(price(overage).recurring).toEqual({ interval: 'month', usage_type: 'metered' });
   });
