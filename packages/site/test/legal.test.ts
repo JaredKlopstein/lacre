@@ -39,9 +39,9 @@ const terms = () => renderToStaticMarkup(TermsPage());
 const privacy = () => renderToStaticMarkup(PrivacyPage());
 
 /**
- * The facts the owner supplied (2026-11-10). The mailbox provider is the host of
- * the inbox the owner named for chain files (contact@frontierforge.tech), read
- * from its MX record, for the owner to confirm in review.
+ * The facts the owner supplied (2026-11-10). The mailbox provider hosts the inbox
+ * the owner named for chain files (contact@frontierforge.tech), as the owner
+ * confirmed.
  */
 const SUPPLIED: LegalFacts = {
   entityName: 'Ascella Studios LLC',

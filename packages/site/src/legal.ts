@@ -46,8 +46,8 @@ export interface LegalFacts {
 export const SECURITY_REPORT_URL = `${BRAND.repository}/security/advisories/new`;
 
 export const LEGAL: LegalFacts = {
-  // Supplied by the owner on 2026-11-10. mailboxProvider is the host of the inbox
-  // the owner named for chain files (contact@frontierforge.tech), per its MX record.
+  // Supplied by the owner on 2026-11-10. mailboxProvider hosts the inbox the owner
+  // named for chain files (contact@frontierforge.tech); the owner confirmed it.
   entityName: 'Ascella Studios LLC',
   entityJurisdiction: 'a Wisconsin limited liability company',
   contactEmail: 'contact@frontierforge.tech',
