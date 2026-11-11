@@ -241,7 +241,7 @@ describe('pricing cards', () => {
     const cloud = cards().get('cloud')!;
     expect(cloud).toContain('$49/mo or $490/yr');
     expect(cloud).toMatch(/5 bundles\/month, no rollover/);
-    expect(cloud).toContain('$10 per extra bundle');
+    expect(cloud).toContain('$5 per extra bundle');
     expect(cloud).toMatch(/\b10 agent identities included/);
     expect(cloud).toContain('$4/mo per extra identity');
     expect(cloud).toContain('90-day retention');

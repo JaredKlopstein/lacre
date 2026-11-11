@@ -133,14 +133,15 @@ export const FREE_FIRST_BUNDLES = 1;
 /** One bundle bought on its own, with no subscription (free tier), after the free first one. */
 export const PAYG_BUNDLE_PRICE_USD = 5;
 /** Each bundle a subscriber exports beyond the month's included allowance. */
-export const OVERAGE_BUNDLE_PRICE_USD = 10;
+export const OVERAGE_BUNDLE_PRICE_USD = 5;
 
 /**
  * The 90-day evidence package: the chain anchored once a week for 90 days, every
- * anchor kept by Lacre, and a call with the buyer's auditor or reviewer. Sold
- * through a Stripe Payment Link the owner creates, not through the catalog.
+ * anchor kept by Lacre for the package term plus anchorsKeptDaysAfterTerm days,
+ * and a call with the buyer's auditor or reviewer. Sold through a Stripe Payment
+ * Link the owner creates, not through the catalog.
  */
-export const NINETY_DAY_PACKAGE = { priceUsd: 249, days: 90, weeklyAnchors: 12 } as const;
+export const NINETY_DAY_PACKAGE = { priceUsd: 249, days: 90, weeklyAnchors: 12, anchorsKeptDaysAfterTerm: 90 } as const;
 
 /** What the free tier deliberately does NOT gate. Encoded so a future change
  *  that cripples the funnel has to be explicit rather than incidental. */

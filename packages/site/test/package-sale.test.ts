@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import PricingPage from '../app/pricing/page.js';
 import TermsPage from '../app/terms/page.js';
+import PrivacyPage from '../app/privacy/page.js';
 import { FREE_FIRST_BUNDLES, NINETY_DAY_PACKAGE, PAYG_BUNDLE_PRICE_USD } from '../../cloud/src/pricing.js';
 import { PACKAGE_LINK_ENV, packageSale, paymentLink } from '../src/package-sale.js';
 import { FIRST_BUNDLE_FREE, PACKAGE_CTA_LABEL, bundleTerms, firstBundleClaim, packageTerms, priceCards, pricingFaq } from '../src/plans.js';
@@ -34,11 +35,13 @@ describe('the evidence bundle price', () => {
     expect(FIRST_BUNDLE_FREE).toBe('First bundle free');
   });
 
-  it('says how to get the free first bundle: by asking, not through checkout, which charges', () => {
-    expect(firstBundleClaim(null)).toBe(
-      'Your first bundle is free: ask through the contact form instead of checking out, and we make it by hand. After that, $5 each',
+  it('says how to get the free first bundle: one per customer, by email, not through checkout, which charges', () => {
+    expect(firstBundleClaim('contact@frontierforge.tech')).toBe(
+      'Your first bundle is free, one per customer: request it by email at contact@frontierforge.tech instead of ' +
+        'checking out, and we make it by hand. After that, $5 each',
     );
-    expect(firstBundleClaim('contact@example.test')).toContain('write to contact@example.test instead of checking out');
+    // Before the owner's contact address is set, it points at the contact form instead.
+    expect(firstBundleClaim(null)).toContain('one per customer: request it through the contact form instead of checking out');
     expect(bundleTerms()).toContain(firstBundleClaim());
     expect(pricingFaq()[3]!.answer).toBe(
       'No. The evidence bundle is pay as you go, no subscription, at $5 each, and your first bundle is free.',
@@ -103,7 +106,7 @@ describe('the 90-day package card on /pricing', () => {
     expect(card).toContain('<h2>90-day evidence package</h2><p>$249</p><p data-price-note="true">for 90 days</p>');
     for (const term of packageTerms()) expect(card).toContain(`<li>${term}</li>`);
     expect(card).toContain('12 anchors');
-    expect(card).toContain('keeps every anchor it makes for you');
+    expect(card).toContain('keeps every anchor it makes for you for the 90-day term plus 90 days');
     expect(card).toContain('A call with your auditor or reviewer');
     expect(card).toContain(`<a href="${LINK}">${PACKAGE_CTA_LABEL}</a>`);
     // It sits between the bundle and Cloud.
@@ -112,7 +115,7 @@ describe('the 90-day package card on /pricing', () => {
   });
 
   it('takes its numbers from NINETY_DAY_PACKAGE', () => {
-    expect(NINETY_DAY_PACKAGE).toEqual({ priceUsd: 249, days: 90, weeklyAnchors: 12 });
+    expect(NINETY_DAY_PACKAGE).toEqual({ priceUsd: 249, days: 90, weeklyAnchors: 12, anchorsKeptDaysAfterTerm: 90 });
     const card = priceCards('monthly', { packageHref: LINK }).find((c) => c.id === 'package')!;
     expect(card.price).toBe('$249');
     expect(card.cta).toEqual({ label: PACKAGE_CTA_LABEL, href: LINK });
@@ -122,16 +125,38 @@ describe('the 90-day package card on /pricing', () => {
 describe('the Terms describe both offers, without a price', () => {
   const terms = unescape(renderToStaticMarkup(TermsPage())).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 
-  it('the free first bundle: one per customer, asked for instead of checking out', () => {
-    expect(terms).toContain('Your first evidence bundle is free, one per customer: ask for it at');
+  it('the free first bundle: one per customer, requested by email at the contact address instead of checking out', () => {
+    expect(terms).toContain('Your first evidence bundle is free, one per customer: request it by email at');
     expect(terms).toContain('instead of checking out, and we make it the same way as a paid one.');
   });
 
   it('the 90-day package: weekly anchors, every anchor kept, one call', () => {
     expect(terms).toContain('The 90-day evidence package is a one-time purchase through a Stripe payment link.');
     expect(terms).toContain('we anchor your chain once a week, 12 anchors in all, from the chain file you send each time');
-    expect(terms).toContain('we keep every anchor we make for you');
+    expect(terms).toContain('we keep every anchor we make for you for the package term plus 90 days');
     expect(terms).toContain('one call with your auditor or reviewer');
     expect(terms).not.toMatch(/\$\d/);
+  });
+
+  it('package refunds: within the refund window, pro-rated for weeks not yet anchored; delivered anchors are not', () => {
+    expect(terms).toMatch(/For the 90-day evidence package, you can request a refund within \S.* of purchase, pro-rated for the weeks not yet anchored\./);
+    expect(terms).toContain('Anchors already delivered are not refundable.');
+  });
+
+  it('package refunds use the same window as bundles: 30 days once the owner\'s facts are in', () => {
+    restore = fillLegalFacts();
+    const filled = unescape(renderToStaticMarkup(TermsPage())).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    // TEST_FACTS has no refunds (0 days), so the package says it is not refundable.
+    expect(filled).toContain('The 90-day evidence package is not refundable, except where the law requires otherwise.');
+  });
+});
+
+describe('the Privacy Policy says how long package anchors are kept', () => {
+  it('every anchor for the package term plus 90 days, chain files for the bundle retention period', () => {
+    const privacy = unescape(renderToStaticMarkup(PrivacyPage())).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    expect(privacy).toContain('Your anchors, if you buy the 90-day evidence package.');
+    expect(privacy).toContain('every anchor we make for you for the 90-day package term plus 90 days');
+    expect(privacy).toMatch(/We keep each chain file for \S/);
+    expect(privacy).not.toMatch(/\$\d/);
   });
 });

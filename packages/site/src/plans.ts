@@ -147,13 +147,14 @@ export interface CardOptions {
 export const FIRST_BUNDLE_FREE: string | null = FREE_FIRST_BUNDLES > 0 ? 'First bundle free' : null;
 
 /**
- * How to get the free first bundle: by asking, not through checkout, which always
- * charges. It names the contact address once the owner has set one.
+ * How to get the free first bundle: one per customer, requested by email at the
+ * owner's contact address (LEGAL.contactEmail), not through checkout, which always
+ * charges. Until the address is set it points at the contact form.
  */
 export function firstBundleClaim(contactEmail: string | null = LEGAL.contactEmail): string {
-  const where = contactEmail ? `write to ${contactEmail}` : 'ask through the contact form';
+  const where = contactEmail ? `request it by email at ${contactEmail}` : 'request it through the contact form';
   return (
-    `Your first bundle is free: ${where} instead of checking out, and we make it by hand. ` +
+    `Your first bundle is free, one per customer: ${where} instead of checking out, and we make it by hand. ` +
     `After that, ${usd(PAYG_BUNDLE_PRICE_USD)} each`
   );
 }
@@ -307,10 +308,11 @@ export function pricingFaq(plan: Plan = PLANS.cloud): FaqEntry[] {
 
 /** The evidence package's terms, from NINETY_DAY_PACKAGE: what the buyer gets and what they send. */
 export function packageTerms(): string[] {
-  const { days, weeklyAnchors } = NINETY_DAY_PACKAGE;
+  const { days, weeklyAnchors, anchorsKeptDaysAfterTerm } = NINETY_DAY_PACKAGE;
   return [
     `Your chain anchored once a week for ${days} days: ${weeklyAnchors} anchors, each timestamped by a public RFC 3161 authority`,
-    `${BRAND.name} keeps every anchor it makes for you, so a third party holds your anchor history`,
+    `${BRAND.name} keeps every anchor it makes for you for the ${days}-day term plus ${anchorsKeptDaysAfterTerm} days, ` +
+      'so a third party holds your anchor history',
     'A call with your auditor or reviewer, walking through verifying the evidence offline',
     `You send your chain file, ${CHAIN_FILE}, for each anchor. Never your signing key (${SIGNING_KEY_FILE})`,
     'One payment through Stripe, no subscription. Made by hand',
