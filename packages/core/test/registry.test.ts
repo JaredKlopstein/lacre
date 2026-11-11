@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { allActions, actionNames } from '../src/registry/registry.js';
 import { buildManifest } from '../src/registry/discover.js';
 import '../src/index.js';
@@ -120,5 +121,12 @@ describe('discovery manifest', () => {
     const limits = (manifest.limitations as string[]).join(' ').toLowerCase();
     expect(limits).toContain('self-attested');
     expect(limits).toContain('not legal advice');
+  });
+});
+
+describe('discover manifest version', () => {
+  it('matches the published package version, so discover never reports a stale release', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+    expect(buildManifest().version).toBe(pkg.version);
   });
 });
