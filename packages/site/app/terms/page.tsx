@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { BRAND } from '../../src/brand';
 import { LEGAL, PRIVACY_PATH, fact } from '../../src/legal';
 import { LegalNotice } from '../../src/legal-notice';
+import { FREE_FIRST_BUNDLES, NINETY_DAY_PACKAGE } from '../../src/plans';
 
 export const metadata: Metadata = {
   title: 'Terms',
@@ -43,6 +44,12 @@ export default function TermsPage() {
         Prices are on the <Link href="/pricing">pricing page</Link>. Payments are taken by Stripe; we do not see or
         store your card number. Plans marked early access are not on sale and cannot be bought. An evidence bundle
         is a one-time purchase.
+        {FREE_FIRST_BUNDLES > 0 &&
+          ` Your first evidence bundle is free, one per customer: ask for it at ${fact('contactEmail')} instead of checking out, and we make it the same way as a paid one.`}{' '}
+        The {NINETY_DAY_PACKAGE.days}-day evidence package is a one-time purchase through a Stripe payment link.
+        Over those {NINETY_DAY_PACKAGE.days} days we anchor your chain once a week, {NINETY_DAY_PACKAGE.weeklyAnchors}{' '}
+        anchors in all, from the chain file you send each time; we keep every anchor we make for you; and we hold
+        one call with your auditor or reviewer to walk through verifying the evidence offline.
       </p>
 
       <h2>Refunds and cancellation</h2>

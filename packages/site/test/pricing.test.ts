@@ -27,7 +27,7 @@ import {
   pricingAnnualOverageDisclosure,
   pricingFaq,
 } from '../src/plans.js';
-import { OVERAGE_BUNDLE_PRICE_USD, PAYG_BUNDLE_PRICE_USD, PLANS } from '../../cloud/src/pricing.js';
+import { NINETY_DAY_PACKAGE, OVERAGE_BUNDLE_PRICE_USD, PAYG_BUNDLE_PRICE_USD, PLANS } from '../../cloud/src/pricing.js';
 import { createCheckoutSession, type StripeLike } from '../../cloud/src/billing/stripe.js';
 import { WAITLIST_ID, targetsWaitlist } from '../app/pricing/waitlist-open.js';
 
@@ -470,7 +470,10 @@ describe('pricing content (#100)', () => {
     for (const billing of [undefined, 'annual']) {
       const html = await render(billing);
       const bundle = card(html, 'bundle');
-      expect(bundle.html).toContain(`<h2>Evidence bundle</h2><p>${bundle.price}</p><p data-badge="true">Opens soon</p>`);
+      // The free first bundle sits under the price, then the badge.
+      expect(bundle.html).toContain(
+        `<h2>Evidence bundle</h2><p>${bundle.price}</p><p data-price-note="true">First bundle free</p><p data-badge="true">Opens soon</p>`,
+      );
       expect(html.match(/data-badge/g)).toHaveLength(1);
       // Cloud still says Early access, in its status line rather than a pill.
       expect(card(html, 'cloud').html).not.toContain('data-badge');
@@ -532,6 +535,8 @@ describe('site source', () => {
     cloud.includedBundlesPerMonth,
     PAYG_BUNDLE_PRICE_USD,
     OVERAGE_BUNDLE_PRICE_USD,
+    NINETY_DAY_PACKAGE.priceUsd,
+    NINETY_DAY_PACKAGE.days,
   ];
 
   it('types no price or plan number', () => {

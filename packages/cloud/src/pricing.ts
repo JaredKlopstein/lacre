@@ -87,13 +87,15 @@ export const PLANS: Record<PlanId, Plan> = {
     maxAnchorIntervalMinutes: 15,
     fairUseReceiptsPerMonth: 1_000_000,
     includedBundlesPerMonth: 5,
+    // Cloud is early access and off sale. A feature that is not built yet is
+    // marked (planned), so nothing here reads as a shipped capability.
     features: [
-      'Managed collector',
+      'Managed collector (planned)',
       '90-day retention',
       'RFC 3161 anchoring',
       'Continuous anchoring (batched, at most 15 minutes)',
       '5 anchored evidence bundles per month',
-      'Hosted verifier page',
+      'Hosted verifier page (planned)',
     ],
   },
 
@@ -109,11 +111,12 @@ export const PLANS: Record<PlanId, Plan> = {
     maxAnchorIntervalMinutes: null,
     fairUseReceiptsPerMonth: null,
     includedBundlesPerMonth: Number.POSITIVE_INFINITY,
+    // Not built yet, so marked (planned) rather than offered.
     features: [
       'Custom retention',
-      'SSO',
-      'On-prem anchor relay',
-      'Support SLA',
+      'SSO (planned)',
+      'On-prem anchor relay (planned)',
+      'Support SLA (planned)',
     ],
   },
 };
@@ -124,10 +127,20 @@ export const PLANS: Record<PlanId, Plan> = {
  * generating one costs us cents; it unblocks an audit worth far more.
  */
 
-/** One bundle bought on its own, with no subscription (free tier). */
-export const PAYG_BUNDLE_PRICE_USD = 15;
+/** Bundles a customer gets free before pay-as-you-go applies: the first one.
+ *  It is made by hand on request, not through checkout. */
+export const FREE_FIRST_BUNDLES = 1;
+/** One bundle bought on its own, with no subscription (free tier), after the free first one. */
+export const PAYG_BUNDLE_PRICE_USD = 5;
 /** Each bundle a subscriber exports beyond the month's included allowance. */
 export const OVERAGE_BUNDLE_PRICE_USD = 10;
+
+/**
+ * The 90-day evidence package: the chain anchored once a week for 90 days, every
+ * anchor kept by Lacre, and a call with the buyer's auditor or reviewer. Sold
+ * through a Stripe Payment Link the owner creates, not through the catalog.
+ */
+export const NINETY_DAY_PACKAGE = { priceUsd: 249, days: 90, weeklyAnchors: 12 } as const;
 
 /** What the free tier deliberately does NOT gate. Encoded so a future change
  *  that cripples the funnel has to be explicit rather than incidental. */

@@ -117,7 +117,7 @@ describe('checkout', () => {
     });
   });
 
-  it('sells one pay-as-you-go bundle as a payment-mode session with the $15 price', async () => {
+  it('sells one pay-as-you-go bundle as a payment-mode session with the $5 price', async () => {
     const r = routes();
     const res = await r.checkout(post('/billing/checkout', { kind: 'payg_bundle' }));
     expect(res.status).toBe(200);
@@ -125,9 +125,9 @@ describe('checkout', () => {
 
     expect(r.checkouts[0]).toMatchObject({ mode: 'payment', line_items: [{ price: PRICES.payg_bundle, quantity: 1 }] });
     expect(r.checkouts[0]!.subscription_data).toBeUndefined();
-    // The variable it reads holds the catalog's $15 one-time price.
+    // The variable it reads holds the catalog's $5 one-time price.
     const payg = stripeCatalog().find((c) => (c.metadata as { kind?: string }).kind === 'payg_bundle')!;
-    expect(payg.price).toEqual({ unit_amount: 1500, currency: 'usd' });
+    expect(payg.price).toEqual({ unit_amount: 500, currency: 'usd' });
   });
 
   it('forwards client_reference_id to the session when given, and omits it otherwise', async () => {
