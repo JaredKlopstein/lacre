@@ -53,7 +53,8 @@ describe('home page', () => {
 
   it('puts a mono eyebrow above the H1 and the not-on-npm note under the buttons', () => {
     expect(hero).toMatch(/<span class="eyebrow">For teams running AI agents that touch money, mail or customer data<\/span><h1 /);
-    expect(text).toContain('Open source (MIT). Packages are not on npm yet: run from source.');
+    expect(text).toContain('Open source (MIT), published on npm.');
+    expect(text).not.toMatch(/not on npm/);
   });
 
   it('qualifies the anchoring proof point: it applies only once you anchor (M4)', () => {
@@ -167,7 +168,8 @@ describe('home page', () => {
   it('says what you can get today: Core free from source, the bundle at its plans.ts price, Cloud early access', () => {
     expect(today).toContain('<h2 id="today-title">What you can get today</h2>');
     expect(todayText).toContain(`${BRAND.name} Core: free.`);
-    expect(todayText).toContain('Run it from source: the packages are not on npm yet.');
+    expect(todayText).toContain('Install it from npm or run it from source: the guide shows both.');
+    expect(todayText).not.toMatch(/not on npm/);
     const bundle = priceCards('monthly').find((c) => c.id === 'bundle')!;
     // The default test environment has no legal facts, so bundles are closed and the
     // section says so instead of promising delivery (src/bundle-sale.ts).

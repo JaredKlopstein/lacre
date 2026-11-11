@@ -58,7 +58,7 @@ export default function HomePage() {
           <p className={styles.ctas}>
             <a href={GETTING_STARTED_URL}>Start free</a> <Link href="/pricing">See pricing</Link>
           </p>
-          <p className={styles.note}>Open source (MIT). Packages are not on npm yet: run from source.</p>
+          <p className={styles.note}>Open source (MIT), published on npm.</p>
         </div>
         {/* Exhibit A: three receipts, hashed in the browser (src/exhibit-chain.tsx). */}
         <div data-slot="exhibit" className={styles.slot}>
@@ -114,8 +114,8 @@ export default function HomePage() {
         <h2 id="today-title">What you can get today</h2>
         <p>
           <strong>{BRAND.name} Core: free.</strong> Record, chain and verify receipts on your own machine, and check
-          evidence bundles with the offline verifier. MIT-licensed. Run it from source: the packages are not on npm
-          yet.
+          evidence bundles with the offline verifier. MIT-licensed. Install it from npm or run it from source:{' '}
+          <a href={GETTING_STARTED_URL}>the guide</a> shows both.
         </p>
         {bundleOpen ? (
           <p>
