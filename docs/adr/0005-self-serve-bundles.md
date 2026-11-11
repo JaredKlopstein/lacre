@@ -4,7 +4,8 @@
 
 ## Context
 
-An evidence bundle is priced at $15 (`/checkout`), but it is not on sale yet:
+An evidence bundle is sold per bundle (`/checkout`; the price is in
+`packages/cloud/src/pricing.ts`), but it is not on sale yet:
 checkout refuses every purchase until the owner's legal facts
 (`packages/site/src/legal.ts`), payment and sign-in are all configured, and no
 deployment has Stripe configured. Once
