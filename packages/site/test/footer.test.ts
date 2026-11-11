@@ -79,7 +79,7 @@ describe('site footer', () => {
 
   it('describes Cloud as early access while it is off sale, and claims nothing else', () => {
     const body = text(footer);
-    expect(body).toContain('Core and verifier: run from source.');
+    expect(body).toContain('Core and verifier: install from npm or run from source.');
     if (OFF_SALE_PLANS.has('cloud')) expect(body).toContain(`Cloud: ${EARLY_ACCESS_LABEL.toLowerCase()}.`);
     expect(body).not.toMatch(/autonomous|compliant|certified|trusted by/i);
   });
