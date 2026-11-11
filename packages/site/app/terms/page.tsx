@@ -51,7 +51,7 @@ export default function TermsPage() {
           ? `You can request a refund within ${fact('refundWindowDays')} of purchase by writing to ${fact('contactEmail')}.`
           : refundDays === 0
             ? 'Purchases are not refundable, except where the law requires otherwise.'
-            : `You can request a refund within ${refundDays} days of purchase by writing to ${fact('contactEmail')}.`}{' '}
+            : `You can request a refund within ${refundDays} days of purchase by writing to ${fact('contactEmail')}, for an evidence bundle we have not yet delivered. A delivered bundle is not refundable: its timestamp has already been issued and cannot be undone.`}{' '}
         A subscription can be cancelled at any time in the billing portal on your account page; it stays active
         until the end of the period already paid for.
       </p>

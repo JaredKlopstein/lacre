@@ -37,6 +37,19 @@ export function fillLegalFacts(): () => void {
   };
 }
 
+/**
+ * Empties every legal fact, as before the owner supplied them, so a test can show
+ * the draft-Terms state. Returns the function that puts the shipped facts back.
+ */
+export function clearLegalFacts(): () => void {
+  const facts = LEGAL as { -readonly [K in keyof LegalFacts]: LegalFacts[K] };
+  const before = { ...facts };
+  for (const key of Object.keys(facts) as (keyof LegalFacts)[]) (facts as Record<string, unknown>)[key] = null;
+  return () => {
+    Object.assign(facts, before);
+  };
+}
+
 /** Everything cloud's checkout config and the checkout route need, as test values. */
 export function stubCheckoutEnv(): void {
   vi.stubEnv('SITE_BASE_URL', 'https://site.example.test');

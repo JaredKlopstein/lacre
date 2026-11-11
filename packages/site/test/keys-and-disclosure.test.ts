@@ -76,9 +76,9 @@ describe('/security: report a vulnerability', () => {
     expect(text(report)).toContain('Please do not open a public issue for a vulnerability.');
   });
 
-  it('invents no email and promises no response time the owner has not set', () => {
-    expect(LEGAL.securityEmail).toBeNull();
-    expect(report).not.toMatch(/mailto:|@[a-z0-9-]+\./i);
+  it('offers only the security email the owner supplied, and promises no response time the owner has not set', () => {
+    expect(LEGAL.securityEmail).toBe('contact@frontierforge.tech');
+    expect(report.match(/mailto:[^"]+/g)).toEqual(['mailto:contact@frontierforge.tech']);
     expect(text(report)).not.toMatch(/\b(within|hours?|business days?|bounty)\b/i);
   });
 });
