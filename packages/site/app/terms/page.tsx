@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { BRAND } from '../../src/brand';
 import { LEGAL, PRIVACY_PATH, fact } from '../../src/legal';
 import { LegalNotice } from '../../src/legal-notice';
+import { FREE_FIRST_BUNDLES, NINETY_DAY_PACKAGE } from '../../src/plans';
 
 export const metadata: Metadata = {
   title: 'Terms',
@@ -43,6 +44,13 @@ export default function TermsPage() {
         Prices are on the <Link href="/pricing">pricing page</Link>. Payments are taken by Stripe; we do not see or
         store your card number. Plans marked early access are not on sale and cannot be bought. An evidence bundle
         is a one-time purchase.
+        {FREE_FIRST_BUNDLES > 0 &&
+          ` Your first evidence bundle is free, one per customer: request it by email at ${fact('contactEmail')} instead of checking out, and we make it the same way as a paid one.`}{' '}
+        The {NINETY_DAY_PACKAGE.days}-day evidence package is a one-time purchase through a Stripe payment link.
+        Over those {NINETY_DAY_PACKAGE.days} days we anchor your chain once a week, {NINETY_DAY_PACKAGE.weeklyAnchors}{' '}
+        anchors in all, from the chain file you send each time; we keep every anchor we make for you for the
+        package term plus {NINETY_DAY_PACKAGE.anchorsKeptDaysAfterTerm} days; and we hold one call with your auditor
+        or reviewer to walk through verifying the evidence offline.
       </p>
 
       <h2>Refunds and cancellation</h2>
@@ -51,9 +59,14 @@ export default function TermsPage() {
           ? `You can request a refund within ${fact('refundWindowDays')} of purchase by writing to ${fact('contactEmail')}.`
           : refundDays === 0
             ? 'Purchases are not refundable, except where the law requires otherwise.'
-            : `You can request a refund within ${refundDays} days of purchase by writing to ${fact('contactEmail')}.`}{' '}
+            : `You can request a refund within ${refundDays} days of purchase by writing to ${fact('contactEmail')}, for an evidence bundle we have not yet delivered. A delivered bundle is not refundable: its timestamp has already been issued and cannot be undone.`}{' '}
         A subscription can be cancelled at any time in the billing portal on your account page; it stays active
         until the end of the period already paid for.
+      </p>
+      <p>
+        {refundDays === 0
+          ? `The ${NINETY_DAY_PACKAGE.days}-day evidence package is not refundable, except where the law requires otherwise.`
+          : `For the ${NINETY_DAY_PACKAGE.days}-day evidence package, you can request a refund within ${refundDays === null ? fact('refundWindowDays') : `${refundDays} days`} of purchase, pro-rated for the weeks not yet anchored. Anchors already delivered are not refundable.`}
       </p>
 
       <h2>What the service does and does not prove</h2>

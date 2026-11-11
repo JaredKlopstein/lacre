@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { BRAND } from '../../src/brand';
 import { LEGAL, TERMS_PATH, fact } from '../../src/legal';
 import { LegalNotice } from '../../src/legal-notice';
+import { NINETY_DAY_PACKAGE } from '../../src/plans';
 
 export const metadata: Metadata = {
   title: 'Privacy',
@@ -49,6 +50,13 @@ export default function PrivacyPage() {
           agents’ public keys. It never holds a signing key, and we never ask for one. We use it only to timestamp
           the chain and build your bundle, and we keep the chain file and the bundle for{' '}
           {fact('bundleRetention')}, so a copy exists if you need it again.
+        </li>
+        <li>
+          <strong>Your anchors, if you buy the {NINETY_DAY_PACKAGE.days}-day evidence package.</strong> Each week you
+          email us your chain file and we anchor it, as for a bundle. We keep each chain file for{' '}
+          {fact('bundleRetention')}, and every anchor we make for you for the {NINETY_DAY_PACKAGE.days}-day package
+          term plus {NINETY_DAY_PACKAGE.anchorsKeptDaysAfterTerm} days, so your anchor history is held by someone
+          other than you for that time.
         </li>
         <li>
           <strong>Abuse protection.</strong> To limit how often sign-in links and messages can be sent, we count

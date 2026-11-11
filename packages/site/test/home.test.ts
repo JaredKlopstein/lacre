@@ -175,7 +175,7 @@ describe('home page', () => {
     // section says so instead of promising delivery (src/bundle-sale.ts).
     // Checkout-not-open comes first, so the price never reads as an offer.
     expect(todayText).toContain(
-      `Evidence bundle: ${BUNDLE_OPENS_SOON.toLowerCase()}. ${BUNDLE_CLOSED_LINE} The planned price is ${bundle.price}.`,
+      `Evidence bundle: ${BUNDLE_OPENS_SOON.toLowerCase()}. ${BUNDLE_CLOSED_LINE} The planned price is ${bundle.price}, and your first bundle is free.`,
     );
     expect(todayText.indexOf(BUNDLE_CLOSED_LINE)).toBeLessThan(todayText.indexOf(bundle.price));
     expect(todayText).not.toContain(`Evidence bundle: ${bundle.price}`);

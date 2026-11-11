@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
@@ -15,7 +15,7 @@ import { accountIdFor, sessionCookie } from '../src/auth/session.js';
 import type { BillingDb } from '../src/billing-db.js';
 import { CHECKOUT_API_PATH, createCheckoutRoute, type CheckoutRouteOptions } from '../src/checkout.js';
 import { OFF_SALE_PLANS, annualOverageDisclosure } from '../src/plans.js';
-import { TEST_FACTS, fillLegalFacts, openSaleKeepingCheckout, stubSignInEnv } from './sale-env.js';
+import { TEST_FACTS, clearLegalFacts, fillLegalFacts, openSaleKeepingCheckout, stubSignInEnv } from './sale-env.js';
 
 /**
  * Authenticated checkout (#59). Stripe is an in-memory fake handed to cloud's own
@@ -449,7 +449,9 @@ describe('checkout page while bundles cannot be bought here (persona review: Mar
   const render = async () => renderToStaticMarkup(await CheckoutPage({ searchParams: Promise.resolve({}) }));
 
   it('says bundles open soon, offers the waitlist and never sends anyone to sign-in, while the Terms are a draft', async () => {
-    // Checkout and sign-in are both configured here; only the legal facts are missing, as in this repository.
+    // Checkout and sign-in are both configured here; only the legal facts are missing.
+    const restore = clearLegalFacts();
+    onTestFinished(restore);
     stubSignInEnv();
     for (const cookie of ['', await signedInCookie()]) {
       pageCookie.value = cookie;

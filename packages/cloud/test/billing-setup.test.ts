@@ -290,7 +290,7 @@ const steps = (r: SyncResult, object: string, ops: string[]) =>
 describe('catalog sync', () => {
   it('generates the overage bundle as a metered monthly price on a meter', () => {
     const overage = stripeCatalog().find((c) => (c.metadata as { kind?: string }).kind === 'overage_bundle')!;
-    expect(overage.price).toMatchObject({ unit_amount: 1000, recurring: { interval: 'month', usage_type: 'metered' } });
+    expect(overage.price).toMatchObject({ unit_amount: 500, recurring: { interval: 'month', usage_type: 'metered' } });
     expect(overage.meter).toMatchObject({ event_name: OVERAGE_METER_EVENT });
   });
 
@@ -306,7 +306,7 @@ describe('catalog sync', () => {
     const shape = created
       .map((p) => `${p.unit_amount}/${p.recurring ? `${p.recurring.interval}:${p.recurring.usage_type}` : 'one-time'}`)
       .sort();
-    expect(shape).toEqual(['1000/month:metered', '1500/one-time', '400/month:licensed', '4900/month:licensed', '49000/year:licensed']);
+    expect(shape).toEqual(['400/month:licensed', '4900/month:licensed', '49000/year:licensed', '500/month:metered', '500/one-time']);
 
     expect(steps(plan, 'meter', ['create'])).toHaveLength(1);
     expect(steps(plan, 'product', ['create'])).toHaveLength(4);
@@ -377,7 +377,7 @@ describe('catalog sync', () => {
     expect(steps(r, 'price', ['replace'])).toHaveLength(1);
     expect(payg.active).toBe(false);
     const current = fake.prices.find((p) => p.lookup_key === 'provenant_payg_bundle')!;
-    expect(current.unit_amount).toBe(1500);
+    expect(current.unit_amount).toBe(500);
     expect(current.id).not.toBe(payg.id);
   });
 

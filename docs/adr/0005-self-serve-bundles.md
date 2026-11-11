@@ -4,9 +4,11 @@
 
 ## Context
 
-An evidence bundle is priced at $15 (`/checkout`), but it is not on sale yet:
-checkout refuses every purchase until the owner's legal facts are set
-(`packages/site/src/legal.ts`), and no deployment has Stripe configured. Once
+An evidence bundle is sold per bundle (`/checkout`; the price is in
+`packages/cloud/src/pricing.ts`), but it is not on sale yet:
+checkout refuses every purchase until the owner's legal facts
+(`packages/site/src/legal.ts`), payment and sign-in are all configured, and no
+deployment has Stripe configured. Once
 it opens, a paid checkout records a bundle credit (`billing_bundle_credits`,
 written by the billing webhook), but nothing redeems it. The bundle is planned
 to be made by hand: the buyer emails
