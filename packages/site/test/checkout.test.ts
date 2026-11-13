@@ -32,6 +32,9 @@ vi.mock('next/headers', () => ({ headers: async () => new Headers({ cookie: page
 const u = (...parts: string[]) => parts.join('_');
 const TEST_KEY = u('sk', 'test', 'x'.repeat(24));
 const LIVE_KEY = u('sk', 'live', 'y'.repeat(24));
+// The sale gate requires it (src/bundle-sale.ts), so the page tests below need
+// it set for /checkout to render anything but "Bundles open soon".
+const WEBHOOK_SECRET = u('whsec', 'x'.repeat(24));
 const PRICES: Record<keyof typeof PRICE_ENV, string> = {
   cloud_month: u('price', 'testcloudmonth'),
   cloud_year: u('price', 'testcloudyear'),
@@ -43,7 +46,7 @@ const CUSTOMER = u('cus', 'fakecustomer');
 const SECRET = 'test-session-secret-for-checkout-tests';
 const SITE = 'https://site.example.test';
 const DATABASE_URL = ['postgresql:', '', 'test-user:test-password@db.site.test', 'billing'].join('/');
-const SECRETS = [TEST_KEY, LIVE_KEY, DATABASE_URL, ...Object.values(PRICES)];
+const SECRETS = [TEST_KEY, LIVE_KEY, WEBHOOK_SECRET, DATABASE_URL, ...Object.values(PRICES)];
 const MIGRATIONS = ['0000_billing.sql', '0001_overage.sql', '0002_overage_retry.sql'].map(
   (f) => new URL(`../../cloud/migrations/${f}`, import.meta.url),
 );
@@ -103,6 +106,7 @@ beforeEach(async () => {
     if (key.endsWith('_BILLING_MODE')) vi.stubEnv(key, '');
   }
   vi.stubEnv('STRIPE_SECRET_KEY', TEST_KEY);
+  vi.stubEnv('STRIPE_WEBHOOK_SECRET', WEBHOOK_SECRET);
   for (const [key, name] of Object.entries(PRICE_ENV)) vi.stubEnv(name, PRICES[key as keyof typeof PRICE_ENV]);
   pageCookie.value = '';
 });
