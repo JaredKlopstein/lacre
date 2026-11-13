@@ -86,7 +86,7 @@ function subscriptionCheckout(o: { session?: string; customer?: string; ref?: st
     id: o.session ?? 'cs_test_subscription', object: 'checkout.session', mode: 'subscription',
     payment_status: 'paid', status: 'complete', customer: o.customer ?? CUSTOMER, subscription: SUBSCRIPTION,
     payment_intent: null, client_reference_id: o.ref ?? null,
-    metadata: { provenant_plan: 'cloud', provenant_interval: interval },
+    metadata: { lacre_plan: 'cloud', lacre_interval: interval },
   });
 }
 
@@ -95,7 +95,7 @@ function bundleCheckout(o: { session?: string; customer?: string; ref?: string |
     id: o.session ?? 'cs_test_bundle', object: 'checkout.session', mode: 'payment',
     payment_status: o.paid === false ? 'unpaid' : 'paid', status: 'complete', customer: o.customer ?? CUSTOMER,
     subscription: null, payment_intent: 'pi_test_bundle', client_reference_id: o.ref ?? null,
-    metadata: { provenant_purchase: 'payg_bundle' },
+    metadata: { lacre_purchase: 'payg_bundle' },
   });
 }
 
@@ -105,7 +105,7 @@ function subscriptionObject(o: { interval?: 'month' | 'year'; status?: string; e
     id: SUBSCRIPTION, object: 'subscription', customer: o.customer ?? CUSTOMER, status: o.status ?? 'active',
     // Checkout's metadata is not updated when the plan switches in the
     // portal; the price is what the customer actually pays for.
-    metadata: { provenant_plan: 'cloud', provenant_interval: 'month' },
+    metadata: { lacre_plan: 'cloud', lacre_interval: 'month' },
     items: {
       object: 'list',
       data: [{

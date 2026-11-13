@@ -210,7 +210,7 @@ export async function createCheckoutSession(
   };
 
   if (opts.kind === 'payg_bundle') {
-    const metadata = { provenant_purchase: 'payg_bundle' };
+    const metadata = { lacre_purchase: 'payg_bundle' };
     return stripe.checkout.sessions.create({
       mode: 'payment',
       line_items: [{ price: opts.priceId, quantity: 1 }],
@@ -257,7 +257,7 @@ export async function createCheckoutSession(
         }
       : {};
 
-  const metadata = { provenant_plan: opts.planId, provenant_interval: opts.interval };
+  const metadata = { lacre_plan: opts.planId, lacre_interval: opts.interval };
   return stripe.checkout.sessions.create({
     mode: 'subscription',
     line_items: lineItems,
@@ -280,20 +280,27 @@ export async function createPortalSession(
  * Meter event name for overage bundles. One event per bundle beyond the
  * monthly allowance; the meter counts them.
  *
- * Customer-visible names in stripeCatalog() say Lacre. These identifiers stay
- * on purpose. Stripe cannot rename a product id or a meter event name, and
- * webhooks read the metadata keys. Renaming them would mean new Stripe objects
- * and new STRIPE_PRICE_* values for no visible gain.
+ * The identifiers below are the Stripe-bound namespace. They were
+ * `provenant_*`, carried over from the rename, and are now `lacre_*`. The
+ * change was made before any Stripe object existed, which was the only moment
+ * it was free: Stripe cannot rename a product id or a meter event name, so
+ * after the account is set up this would mean creating a new meter, pointing
+ * the metered price at it and reissuing the STRIPE_PRICE_* values. The metadata
+ * keys are read by the webhook, so writer and reader move together or the
+ * reader silently sees nothing.
  *
- * Kept:
- * - product ids and price lookup keys `provenant_*`
- * - metadata `provenant_plan`, `provenant_interval`, `provenant_purchase`,
- *   `provenant_annual_subscription`, `provenant_key`
- * - OVERAGE_METER_EVENT = 'provenant_overage_bundle'
- * - event type `provenant.duplicate_metered.cancel`
- * - idempotency keys `provenant-overage-*` (overage.ts)
+ * The namespace:
+ * - product ids and price lookup keys `lacre_*` (sync.ts)
+ * - metadata `lacre_plan`, `lacre_interval`, `lacre_purchase`,
+ *   `lacre_annual_subscription`, `lacre_key`
+ * - OVERAGE_METER_EVENT = 'lacre_overage_bundle'
+ * - event type `lacre.duplicate_metered.cancel` (store.ts)
+ * - idempotency keys `lacre-overage-*` (overage.ts)
+ *
+ * Customer-visible names in stripeCatalog() already said Lacre and are
+ * unchanged.
  */
-export const OVERAGE_METER_EVENT = 'provenant_overage_bundle';
+export const OVERAGE_METER_EVENT = 'lacre_overage_bundle';
 
 /** The product catalog to create in Stripe, generated from pricing.ts so the
  *  two can never disagree. */

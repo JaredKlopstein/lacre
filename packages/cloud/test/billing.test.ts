@@ -213,7 +213,7 @@ describe('stripe catalog', () => {
 
     const overage = catalog.find((c) => meta(c).kind === 'overage_bundle')!;
     expect(overage.meter).toEqual({
-      event_name: 'provenant_overage_bundle',
+      event_name: 'lacre_overage_bundle',
       display_name: 'Lacre evidence bundles beyond plan allowance',
     });
   });
@@ -252,7 +252,7 @@ describe('self-serve checkout', () => {
     expect(session.id).toBe('cs_test_1');
     expect(calls[0]!.mode).toBe('subscription');
     expect(calls[0]!.line_items).toEqual([{ price: `price_cloud_${interval}`, quantity: 1 }]);
-    expect(calls[0]!.metadata).toEqual({ provenant_plan: 'cloud', provenant_interval: interval });
+    expect(calls[0]!.metadata).toEqual({ lacre_plan: 'cloud', lacre_interval: interval });
   });
 
   it('sells a single pay-as-you-go bundle as a one-time payment', async () => {
@@ -261,7 +261,7 @@ describe('self-serve checkout', () => {
 
     expect(calls[0]!.mode).toBe('payment');
     expect(calls[0]!.line_items).toEqual([{ price: 'price_payg_bundle', quantity: 1 }]);
-    expect(calls[0]!.metadata).toEqual({ provenant_purchase: 'payg_bundle' });
+    expect(calls[0]!.metadata).toEqual({ lacre_purchase: 'payg_bundle' });
     expect(calls[0]!.subscription_data).toBeUndefined();
     // So the webhook has a customer to credit the bundle to and link.
     expect(calls[0]!.customer_creation).toBe('always');

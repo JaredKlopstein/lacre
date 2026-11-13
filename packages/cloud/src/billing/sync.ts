@@ -5,8 +5,8 @@
  * look up directly, so a re-run finds what the last run made instead of
  * making it again:
  *
- *  - products get a fixed id (`provenant_cloud`, `provenant_payg_bundle`, ...);
- *  - prices get a lookup key (`provenant_cloud_month`, ...). Stripe prices are
+ *  - products get a fixed id (`lacre_cloud`, `lacre_payg_bundle`, ...);
+ *  - prices get a lookup key (`lacre_cloud_month`, ...). Stripe prices are
  *    immutable, so a price that drifted from pricing.ts is REPLACED: a new
  *    price takes over the lookup key and the old one is archived, never
  *    deleted, so existing subscriptions keep billing on it;
@@ -15,7 +15,7 @@
  * A display-name change updates that product in place. It does not create a
  * product or a price, and it does not create a meter.
  *
- * Each object also carries `provenant_key` metadata naming its catalog entry.
+ * Each object also carries `lacre_key` metadata naming its catalog entry.
  *
  * A run that fails part-way is safe to repeat: it only does what is still
  * missing.
@@ -111,18 +111,18 @@ function desiredCatalog(): Desired[] {
     const kind = entry.metadata.kind;
     const key = (typeof kind === 'string' ? kind : `${entry.metadata.plan_id}_${entry.metadata.billing_interval}`) as CatalogKey;
     if (!(key in PRICE_ENV)) throw new Error(`catalog entry '${key}' has no price variable in PRICE_ENV`);
-    const productId = `provenant_${typeof kind === 'string' ? kind : String(entry.metadata.plan_id)}`;
+    const productId = `lacre_${typeof kind === 'string' ? kind : String(entry.metadata.plan_id)}`;
     // Stripe metadata is strings only; nulls mean "not set" and are dropped.
-    const metadata: Metadata = { provenant_key: key };
+    const metadata: Metadata = { lacre_key: key };
     for (const [k, v] of Object.entries(entry.metadata)) if (v !== null) metadata[k] = String(v);
     return {
       key,
-      lookupKey: `provenant_${key}`,
+      lookupKey: `lacre_${key}`,
       productId,
       product: {
         name: entry.product.name,
         ...(entry.product.description ? { description: entry.product.description } : {}),
-        metadata: { provenant_key: productId },
+        metadata: { lacre_key: productId },
       },
       price: entry.price,
       ...(entry.meter ? { meter: entry.meter } : {}),
