@@ -23,6 +23,7 @@ import {
 import { usedTokenSchema } from '../src/auth/used-tokens.js';
 import { priceCards, WAITLIST_HREF } from '../src/plans.js';
 import { openSaleKeepingCheckout, stubCheckoutEnv } from './sale-env.js';
+import { withoutBrandDomain } from './brand-domain.js';
 
 /**
  * #101: signed-in pages say who is signed in and let them sign out; checkout lists
@@ -58,7 +59,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.close();
 });
+let restoreBrandDomain: (() => void) | null = null;
 beforeEach(async () => {
+  restoreBrandDomain = withoutBrandDomain();
   await db.exec('TRUNCATE billing_subscriptions, billing_customers, site_magic_link_used RESTART IDENTITY CASCADE');
   for (const level of ['error', 'warn', 'log', 'info', 'debug'] as const) vi.spyOn(console, level).mockImplementation(() => {});
   vi.stubEnv('SESSION_SECRET', SECRET);
@@ -75,6 +78,8 @@ beforeEach(async () => {
 });
 let restoreFacts: () => void = () => {};
 afterEach(() => {
+  restoreBrandDomain?.();
+  restoreBrandDomain = null;
   restoreFacts();
   vi.useRealTimers();
   vi.unstubAllEnvs();

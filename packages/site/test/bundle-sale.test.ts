@@ -6,6 +6,8 @@ import { bundleSale } from '../src/bundle-sale.js';
 import { LEGAL, missingFacts } from '../src/legal.js';
 import PricingPage from '../app/pricing/page.js';
 import { TEST_FACTS, clearLegalFacts, clearSaleEnv, fillLegalFacts, stubCheckoutEnv, stubSignInEnv } from './sale-env.js';
+import { withoutBrandDomain } from './brand-domain.js';
+import { BRAND } from '../src/brand.js';
 
 /**
  * Whether a bundle can be bought here: the legal facts filled in, checkout
@@ -65,7 +67,10 @@ describe('bundle sale', () => {
   });
 
   it('closes again when any one checkout variable is missing', () => {
-    for (const name of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', PRICE_ENV.payg_bundle, PRICE_ENV.cloud_month, 'DATABASE_URL', 'SITE_BASE_URL']) {
+    // SITE_BASE_URL is deliberately not in this list. BRAND.domain now supplies
+    // the link base, so unsetting SITE_BASE_URL leaves the base intact and the
+    // sale open; the test below covers the base instead.
+    for (const name of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', PRICE_ENV.payg_bundle, PRICE_ENV.cloud_month, 'DATABASE_URL']) {
       open();
       vi.stubEnv(name, '');
       expect(bundleSale().blockers, name).toContain('checkout');
@@ -88,6 +93,40 @@ describe('bundle sale', () => {
     open();
     vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'not-a-signing-secret');
     expect(bundleSale().blockers).toContain('checkout');
+  });
+
+  it('takes its link base from the attached domain, so the environment no longer has to supply one', () => {
+    // Before BRAND.domain was attached, clearing SITE_BASE_URL and VERCEL_URL
+    // closed the sale for want of a base. The domain now provides it.
+    open();
+    vi.stubEnv('SITE_BASE_URL', '');
+    vi.stubEnv('VERCEL_URL', '');
+    expect(BRAND.domain).not.toBeNull();
+    expect(bundleSale()).toEqual({ open: true, blockers: [] });
+  });
+
+  it('still closes for want of a base once the domain is detached', () => {
+    open();
+    const restore = withoutBrandDomain();
+    try {
+      vi.stubEnv('SITE_BASE_URL', '');
+      vi.stubEnv('VERCEL_URL', '');
+      expect(bundleSale().blockers).toContain('checkout');
+    } finally {
+      restore();
+    }
+  });
+
+  /**
+   * The check the domain change is most likely to get wrong: attaching a domain
+   * makes the first branch of checkoutConfigured's `base` true, and the sale must
+   * not open on that alone. Production carries DATABASE_URL and nothing else.
+   */
+  it('stays closed on production’s environment, where only DATABASE_URL is set', () => {
+    restoreFacts = fillLegalFacts();
+    vi.stubEnv('DATABASE_URL', 'postgresql://test-user:test-password@db.site.test/site');
+    expect(BRAND.domain).not.toBeNull();
+    expect(bundleSale()).toEqual({ open: false, blockers: ['checkout', 'sign-in'] });
   });
 
   it("follows cloud's own checkout config: a live key without live mode keeps checkout closed", () => {
