@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import PricingPage from '../app/pricing/page.js';
 import TermsPage from '../app/terms/page.js';
 import PrivacyPage from '../app/privacy/page.js';
-import { FREE_FIRST_BUNDLES, NINETY_DAY_PACKAGE, PAYG_BUNDLE_PRICE_USD } from '../../cloud/src/pricing.js';
+import { FREE_FIRST_BUNDLES, PAYG_BUNDLE_PRICE_USD } from '../../cloud/src/pricing.js';
 import { FIRST_BUNDLE_FREE, bundleTerms, firstBundleClaim, priceCards, pricingFaq } from '../src/plans.js';
 import { TEST_FACTS, fillLegalFacts } from './sale-env.js';
 
@@ -82,7 +82,7 @@ describe('the withdrawn 90-day package', () => {
 });
 
 
-describe('the Terms describe both offers, without a price', () => {
+describe('the Terms describe the one offer there is, without a price', () => {
   const terms = unescape(renderToStaticMarkup(TermsPage())).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 
   it('the free first bundle: one per customer, requested by email at the contact address instead of checking out', () => {
@@ -90,33 +90,58 @@ describe('the Terms describe both offers, without a price', () => {
     expect(terms).toContain('instead of checking out, and we make it the same way as a paid one.');
   });
 
-  it('the 90-day package: weekly anchors, every anchor kept, one call', () => {
-    expect(terms).toContain('The 90-day evidence package is a one-time purchase through a Stripe payment link.');
-    expect(terms).toContain('we anchor your chain once a week, 12 anchors in all, from the chain file you send each time');
-    expect(terms).toContain('we keep every anchor we make for you for the package term plus 90 days');
-    expect(terms).toContain('one call with your auditor or reviewer');
-    expect(terms).not.toMatch(/\$\d/);
-  });
-
-  it('package refunds: within the refund window, pro-rated for weeks not yet anchored; delivered anchors are not', () => {
-    expect(terms).toMatch(/For the 90-day evidence package, you can request a refund within \S.* of purchase, pro-rated for the weeks not yet anchored\./);
-    expect(terms).toContain('Anchors already delivered are not refundable.');
-  });
-
-  it('package refunds use the same window as bundles: 30 days once the owner\'s facts are in', () => {
+  it('still state the bundle refund terms, which are unchanged', () => {
     restore = fillLegalFacts();
     const filled = unescape(renderToStaticMarkup(TermsPage())).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-    // TEST_FACTS has no refunds (0 days), so the package says it is not refundable.
-    expect(filled).toContain('The 90-day evidence package is not refundable, except where the law requires otherwise.');
+    // TEST_FACTS has a zero-day window, so bundles read as non-refundable.
+    expect(filled).toContain('Purchases are not refundable, except where the law requires otherwise.');
+    expect(filled).toContain('A subscription can be cancelled at any time in the billing portal');
+  });
+
+  it('name no price', () => {
+    expect(terms).not.toMatch(/\$\d/);
   });
 });
 
-describe('the Privacy Policy says how long package anchors are kept', () => {
-  it('every anchor for the package term plus 90 days, chain files for the bundle retention period', () => {
-    const privacy = unescape(renderToStaticMarkup(PrivacyPage())).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-    expect(privacy).toContain('Your anchors, if you buy the 90-day evidence package.');
-    expect(privacy).toContain('every anchor we make for you for the 90-day package term plus 90 days');
-    expect(privacy).toMatch(/We keep each chain file for \S/);
-    expect(privacy).not.toMatch(/\$\d/);
+/**
+ * The reason this change exists, rather than tidiness.
+ *
+ * Until these clauses went, the Terms taking effect 2026-11-14 described a
+ * 90-day package with 12 weekly anchors, a retention term and a pro-rated
+ * refund -- an offer that was never purchasable, never shown on any
+ * deployment, and for which no Stripe Payment Link was ever created. In-force
+ * Terms must not describe something that does not exist.
+ */
+describe('neither the Terms nor the Privacy Policy describes the withdrawn package', () => {
+  const render = (page: string) => unescape(page).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  const bodies = () => [
+    render(renderToStaticMarkup(TermsPage())),
+    render(renderToStaticMarkup(PrivacyPage())),
+  ];
+
+  it('mentions no evidence package, weekly anchors, auditor call or pro-rated refund', () => {
+    for (const body of bodies()) {
+      expect(body).not.toContain('evidence package');
+      expect(body).not.toContain('once a week');
+      expect(body).not.toContain('12 anchors');
+      expect(body).not.toContain('auditor or reviewer');
+      expect(body).not.toContain('pro-rated');
+      expect(body).not.toContain('Anchors already delivered');
+      expect(body).not.toContain('payment link');
+    }
+  });
+
+  it('says the same with the owner\'s facts filled in, since the refund wording branches on them', () => {
+    restore = fillLegalFacts();
+    for (const body of bodies()) {
+      expect(body).not.toContain('evidence package');
+      expect(body).not.toContain('pro-rated');
+    }
+  });
+
+  it('keeps what the package clauses sat beside: the bundle chain file and its retention', () => {
+    const [, privacy] = bodies();
+    expect(privacy).toContain('Your chain file, if you buy an evidence bundle.');
+    expect(privacy).toMatch(/we keep the chain file and the bundle for \S/);
   });
 });

@@ -8,7 +8,6 @@
  */
 import {
   FREE_FIRST_BUNDLES,
-  NINETY_DAY_PACKAGE,
   OVERAGE_BUNDLE_PRICE_USD,
   PAYG_BUNDLE_PRICE_USD,
   PLANS,
@@ -19,15 +18,8 @@ import { LEGAL } from './legal';
 
 const usd = (amount: number) => `$${amount}`;
 
-/**
- * For pages that describe the offers in words (the Terms): counts only, never a price.
- *
- * NINETY_DAY_PACKAGE stays although the package is no longer offered: /terms and
- * /privacy still describe its obligations, because withdrawing an offer does not
- * end the rights of anyone who already bought it. Those clauses go only once it
- * is established that nobody did.
- */
-export { FREE_FIRST_BUNDLES, NINETY_DAY_PACKAGE };
+/** For pages that describe the offers in words (the Terms): counts only, never a price. */
+export { FREE_FIRST_BUNDLES };
 
 export type Billing = 'monthly' | 'annual';
 export const BILLINGS = ['monthly', 'annual'] as const satisfies readonly Billing[];
