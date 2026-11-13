@@ -414,7 +414,7 @@ describe('pricing content (#100)', () => {
   it('says on the bundle card what a buyer needs, sends, gets back and when', async () => {
     const terms = card(await render(), 'bundle').terms;
     const has = (pattern: RegExp) => expect(terms.some((t) => pattern.test(t)), String(pattern)).toBe(true);
-    has(new RegExp(`^You need ${BRAND.name} Core running from source and recording your agent’s receipts`));
+    has(new RegExp(`^You need ${BRAND.name} Core, installed from npm or run from source, recording your agent’s receipts first$`));
     has(/^Covers the receipts already recorded when the bundle is made, and is timestamped then$/);
     // "Chain file" is defined where it first appears, and the signing key is never asked for.
     has(new RegExp(`^You send your chain file, ${CHAIN_FILE.replace('.', '\\.')}: the database Core keeps your receipts and agents’ public keys in\\. Never your signing key \\(${SIGNING_KEY_FILE.replace(/\./g, '\\.')}\\)$`));

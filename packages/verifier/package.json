@@ -1,6 +1,6 @@
 {
   "name": "@lacre/verifier",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Standalone offline verifier for Lacre evidence bundles. Zero network, zero Lacre runtime dependency. MIT.",
   "license": "MIT",
   "type": "module",
@@ -8,7 +8,7 @@
     "node": ">=22.5.0"
   },
   "bin": {
-    "lacre-verify": "./bin/lacre-verify.mjs"
+    "lacre-verify": "bin/lacre-verify.mjs"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

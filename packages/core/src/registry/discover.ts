@@ -35,7 +35,7 @@ function jsonSchema(schema: z.ZodType): unknown {
 export function buildManifest(): Record<string, unknown> {
   return {
     service: 'lacre',
-    version: '1.0.0',
+    version: '1.0.1',
     receipt_version: LACRE_RECEIPT_VERSION,
     description:
       'Agent-native accountability. Agents write signed, hash-chained receipts of consequential actions; anyone can later verify that the record was not altered.',
