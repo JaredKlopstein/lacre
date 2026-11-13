@@ -71,10 +71,30 @@ describe('site footer', () => {
     expect(html.match(/<nav aria-label="Legal">/g)).toHaveLength(1);
   });
 
-  it('ends with the name, tagline and disclaimer, and no invented entity or address', () => {
+  it('ends with the name, tagline and disclaimer', () => {
     expect(text(footer)).toContain(`${BRAND.name} · ${BRAND.tagline} · Not legal advice.`);
-    expect(read('../src/site-footer.tsx')).toContain('#113');
-    expect(footer).not.toMatch(/LLC|Inc\.|Ltd|©/);
+  });
+
+  /**
+   * #113. This used to assert the opposite — `not.toMatch(/LLC|Inc\.|Ltd|©/)` — which was
+   * right while the owner had supplied no entity: it proved the footer invented none. Now
+   * that LEGAL carries one, the same intent is "name exactly the supplied entity and
+   * nothing else", so the assertion is inverted rather than deleted.
+   */
+  it('names the operating entity, taken from the supplied facts and not invented', () => {
+    if (LEGAL.entityName === null) {
+      expect(footer).not.toMatch(/LLC|Inc\.|Ltd/);
+      return;
+    }
+    expect(text(footer)).toContain(`${BRAND.name} is operated by ${LEGAL.entityName}`);
+    if (LEGAL.entityJurisdiction) expect(text(footer)).toContain(LEGAL.entityJurisdiction);
+    // Nothing is hard-coded: the entity reaches the footer only through LEGAL.
+    expect(read('../src/site-footer.tsx')).not.toContain(LEGAL.entityName);
+  });
+
+  it('publishes no postal address and no copyright notice, which live on /terms and /privacy', () => {
+    expect(footer).not.toMatch(/©/);
+    if (LEGAL.postalAddress) expect(text(footer)).not.toContain(LEGAL.postalAddress);
   });
 
   it('describes Cloud as early access while it is off sale, and claims nothing else', () => {

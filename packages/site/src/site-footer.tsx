@@ -68,8 +68,8 @@ export function SiteFooter() {
       <div className={styles.base}>
         <nav aria-label="Legal">
           <Link href={TERMS_PATH}>Terms</Link> · <Link href={PRIVACY_PATH}>Privacy</Link> ·{' '}
-          {/* No contact address is published until the owner supplies one (#113), so the
-              fallback is labelled for what it is: the sales and enterprise form. */}
+          {/* Without a contact address there is nothing to publish, so the fallback is
+              labelled for what it is: the sales and enterprise form. */}
           {LEGAL.contactEmail ? (
             <a href={`mailto:${LEGAL.contactEmail}`}>Contact</a>
           ) : (
@@ -77,10 +77,22 @@ export function SiteFooter() {
           )}{' '}
           · <Link href="/security#report-a-vulnerability">Report a vulnerability</Link>
         </nav>
-        {/* #113: the legal entity and contact line goes here once the owner supplies it. */}
         <p>
           {BRAND.name} · {BRAND.tagline} · Not legal advice.
         </p>
+        {/*
+          The operating entity, from the owner-supplied facts in src/legal.ts and never
+          invented here: while entityName is null this renders nothing at all, exactly as
+          the footer did before the facts were supplied. The postal address and the
+          jurisdiction's full detail stay on /terms and /privacy, which is where a reader
+          looking for them goes.
+        */}
+        {LEGAL.entityName && (
+          <p>
+            {BRAND.name} is operated by {LEGAL.entityName}
+            {LEGAL.entityJurisdiction ? `, ${LEGAL.entityJurisdiction}` : ''}.
+          </p>
+        )}
       </div>
     </div>
   );
