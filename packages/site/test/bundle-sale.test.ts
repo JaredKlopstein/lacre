@@ -65,13 +65,29 @@ describe('bundle sale', () => {
   });
 
   it('closes again when any one checkout variable is missing', () => {
-    for (const name of ['STRIPE_SECRET_KEY', PRICE_ENV.payg_bundle, PRICE_ENV.cloud_month, 'DATABASE_URL', 'SITE_BASE_URL']) {
+    for (const name of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', PRICE_ENV.payg_bundle, PRICE_ENV.cloud_month, 'DATABASE_URL', 'SITE_BASE_URL']) {
       open();
       vi.stubEnv(name, '');
       expect(bundleSale().blockers, name).toContain('checkout');
       restoreFacts?.();
       vi.unstubAllEnvs();
     }
+  });
+
+  it('stays closed with Stripe fully configured but no webhook secret, so nobody can pay before a payment can be recorded', () => {
+    // The state this guard exists for: the Stripe keys and prices set, which is
+    // what opens the sale, while nothing is configured to receive the callback.
+    // Without the webhook the purchase is never written to the account, and
+    // /account would read "A purchase shows here once Stripe confirms it" forever.
+    open();
+    vi.stubEnv('STRIPE_WEBHOOK_SECRET', '');
+    expect(bundleSale()).toEqual({ open: false, blockers: ['checkout'] });
+  });
+
+  it('refuses a malformed webhook secret as well as a missing one', () => {
+    open();
+    vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'not-a-signing-secret');
+    expect(bundleSale().blockers).toContain('checkout');
   });
 
   it("follows cloud's own checkout config: a live key without live mode keeps checkout closed", () => {

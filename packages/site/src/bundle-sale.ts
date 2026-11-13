@@ -37,13 +37,26 @@ type Env = Record<string, string | undefined>;
 
 const set = (env: Env, name: string) => !!env[name]?.trim();
 
-/** The checkout route's own needs: a link base, the billing database and cloud's checkout config. */
+/**
+ * The checkout route's own needs: a link base, the billing database and cloud's
+ * checkout config.
+ *
+ * 'webhook' is in the needs list although the checkout route itself never reads
+ * the webhook secret. Taking a payment and recording it are one capability, and
+ * this is the gate that decides whether a payment can be taken at all: without
+ * it, setting the Stripe variables would open the sale with nowhere for Stripe
+ * to call back, and a customer could pay while the account's record of the
+ * purchase was never written. Requiring the secret here means the sale cannot
+ * open before a payment can be recorded. It is a guard against a mistake that
+ * is otherwise one environment variable away, not a thing checkout needs.
+ */
 function checkoutConfigured(env: Env): boolean {
   const base = BRAND.domain !== null || set(env, 'SITE_BASE_URL') || set(env, 'VERCEL_URL');
   if (!base || !set(env, BILLING_DATABASE_ENV)) return false;
   try {
-    // The same call cloud's checkout handler makes; it throws on any gap and logs nothing.
-    loadBillingConfig(env, ['stripe', 'prices'], { optionalPrices: ['overage_bundle'] });
+    // The same call cloud's checkout handler makes, plus the webhook secret; it
+    // throws on any gap and logs nothing.
+    loadBillingConfig(env, ['stripe', 'prices', 'webhook'], { optionalPrices: ['overage_bundle'] });
     return true;
   } catch {
     return false;
