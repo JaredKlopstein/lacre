@@ -292,21 +292,21 @@ async function checkoutCompleted(tx: BillingTx, session: Stripe.Checkout.Session
   if (session.mode === 'subscription') {
     const subscription = idOf(session.subscription);
     if (!customer || !subscription) throw new Error('subscription checkout completed with no customer or subscription');
-    const interval = session.metadata?.provenant_interval;
+    const interval = session.metadata?.lacre_interval;
     if (interval !== 'month' && interval !== 'year') {
-      throw new Error('subscription checkout carries no provenant_interval; it was not created by the checkout route');
+      throw new Error('subscription checkout carries no lacre_interval; it was not created by the checkout route');
     }
     await saveSubscription(tx, {
       stripeSubscriptionId: subscription,
       stripeCustomerId: customer,
-      plan: planOf(session.metadata?.provenant_plan) ?? 'cloud',
+      plan: planOf(session.metadata?.lacre_plan) ?? 'cloud',
       interval,
       status: paid ? 'active' : 'incomplete',
     }, 'insert-only');
     return;
   }
 
-  if (session.mode === 'payment' && session.metadata?.provenant_purchase === 'payg_bundle' && session.payment_status === 'paid') {
+  if (session.mode === 'payment' && session.metadata?.lacre_purchase === 'payg_bundle' && session.payment_status === 'paid') {
     await creditBundle(tx, {
       stripeCheckoutSessionId: session.id,
       stripeCustomerId: customer,
@@ -380,13 +380,13 @@ async function refundLatestCharge(stripe: DuplicateGuardStripe, sub: Subscriptio
 
 function subscriptionState(sub: Stripe.Subscription) {
   const item = sub.items.data[0];
-  const interval = item?.price.recurring?.interval ?? sub.metadata.provenant_interval;
+  const interval = item?.price.recurring?.interval ?? sub.metadata.lacre_interval;
   if (!interval) throw new Error('subscription has no recurring interval');
   return {
     stripeSubscriptionId: sub.id,
     stripeCustomerId: idOf(sub.customer)!,
     stripePriceId: item?.price.id ?? null,
-    plan: planOf(sub.metadata.provenant_plan) ?? planOf(item?.price.metadata.plan_id) ?? 'cloud',
+    plan: planOf(sub.metadata.lacre_plan) ?? planOf(item?.price.metadata.plan_id) ?? 'cloud',
     interval,
     status: sub.status,
     currentPeriodStart: item ? fromUnix(item.current_period_start) : null,

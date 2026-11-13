@@ -58,7 +58,7 @@ export async function applyEventOnce<T>(
 export async function claimDuplicateCancel(tx: BillingTx, stripeSubscriptionId: string): Promise<boolean> {
   const claimed = await tx
     .insert(billingWebhookEvents)
-    .values({ stripeEventId: `duplicate_metered:${stripeSubscriptionId}`, type: 'provenant.duplicate_metered.cancel' })
+    .values({ stripeEventId: `duplicate_metered:${stripeSubscriptionId}`, type: 'lacre.duplicate_metered.cancel' })
     .onConflictDoNothing()
     .returning({ id: billingWebhookEvents.stripeEventId });
   return claimed.length > 0;

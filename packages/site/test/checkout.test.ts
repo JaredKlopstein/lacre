@@ -238,7 +238,7 @@ describe("cloud's checkout handler", () => {
   it("refuses a second Cloud subscription for the account's linked customer", async () => {
     await db.insert(billingCustomers).values({ stripeCustomerId: CUSTOMER, accountId: await accountIdFor('ada@example.com') });
     fake = fakeStripe([
-      { id: u('sub', 'existing'), status: 'active', created: 1, metadata: { provenant_plan: 'cloud' }, items: { data: [{ price: { id: PRICES.cloud_year } }] } },
+      { id: u('sub', 'existing'), status: 'active', created: 1, metadata: { lacre_plan: 'cloud' }, items: { data: [{ price: { id: PRICES.cloud_year } }] } },
     ]);
     const res = await postJson({ plan: 'cloud', interval: 'month' }, {}, cloudOnSale());
     expect(res.status).toBe(409);

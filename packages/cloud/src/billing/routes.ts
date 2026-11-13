@@ -209,7 +209,7 @@ async function existingSubscriptions(ctx: Context, opts: BillingRoutesOptions, a
 function conflicts(config: BillingConfig, sub: SubscriptionSummary): boolean {
   const { cloud_month: month, cloud_year: year, overage_bundle: overage } = config.prices;
   return (
-    sub.metadata?.provenant_plan === 'cloud' ||
+    sub.metadata?.lacre_plan === 'cloud' ||
     [month, year, overage].some((price) => !!price && carriesPrice(sub, price))
   );
 }

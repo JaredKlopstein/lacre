@@ -358,25 +358,25 @@ describe('catalog sync', () => {
     expect(updates.map((s) => ({ key: s.key, detail: s.detail }))).toEqual(
       expected.map((p) => ({ key: p.id, detail: `update product name to "${p.next}"` })),
     );
-    expect(updates.every((s) => s.key.startsWith('provenant_'))).toBe(true);
+    expect(updates.every((s) => s.key.startsWith('lacre_'))).toBe(true);
     expect(plan.steps.filter((s) => s.op === 'create' || s.op === 'replace')).toEqual([]);
     expect(plan.steps.filter((s) => s.object === 'price').every((s) => s.op === 'unchanged')).toBe(true);
     expect(plan.steps.filter((s) => s.object === 'meter').every((s) => s.op === 'unchanged')).toBe(true);
     expect(plan.summary).toMatchObject({ create: 0, replace: 0, update: expected.length });
-    expect(plan.prices.every((p) => p.lookup_key.startsWith('provenant_') && p.price_id !== null)).toBe(true);
+    expect(plan.prices.every((p) => p.lookup_key.startsWith('lacre_') && p.price_id !== null)).toBe(true);
     for (const product of fake.products.values()) expect(product.name.startsWith('Provenant')).toBe(true);
   });
 
   it('replaces a price whose amount drifted, moving the lookup key and archiving the old one', async () => {
     const fake = fakeStripe();
     await syncCatalog(fake.client, { mode: 'test', apply: true });
-    const payg = fake.prices.find((p) => p.lookup_key === 'provenant_payg_bundle')!;
+    const payg = fake.prices.find((p) => p.lookup_key === 'lacre_payg_bundle')!;
     payg.unit_amount = 999;
 
     const r = await syncCatalog(fake.client, { mode: 'test', apply: true });
     expect(steps(r, 'price', ['replace'])).toHaveLength(1);
     expect(payg.active).toBe(false);
-    const current = fake.prices.find((p) => p.lookup_key === 'provenant_payg_bundle')!;
+    const current = fake.prices.find((p) => p.lookup_key === 'lacre_payg_bundle')!;
     expect(current.unit_amount).toBe(500);
     expect(current.id).not.toBe(payg.id);
   });

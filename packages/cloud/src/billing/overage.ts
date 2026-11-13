@@ -509,7 +509,7 @@ class Reporter {
         identifier: row.bundleId,
         timestamp: target.timestamp,
         payload: { stripe_customer_id: target.customer, value: '1' },
-      }, { idempotencyKey: `provenant-overage-${row.bundleId}` });
+      }, { idempotencyKey: `lacre-overage-${row.bundleId}` });
     } catch (err) {
       await db
         .update(billingUsageReports)
@@ -595,8 +595,8 @@ class Reporter {
       items: [{ price }],
       default_payment_method: paymentMethod,
       proration_behavior: 'none',
-      metadata: { provenant_purchase: 'overage_bundle', provenant_annual_subscription: annualId },
-    }, { idempotencyKey: `provenant-overage-subscription-${annualId}` });
+      metadata: { lacre_purchase: 'overage_bundle', lacre_annual_subscription: annualId },
+    }, { idempotencyKey: `lacre-overage-subscription-${annualId}` });
 
     // Stripe's start date or, if it sent none, the time it answered: after the
     // subscription was created either way.
