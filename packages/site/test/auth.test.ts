@@ -22,6 +22,7 @@ import {
   verifyLinkToken,
 } from '../src/auth/session.js';
 import { usedTokenSchema } from '../src/auth/used-tokens.js';
+import { withoutBrandDomain } from './brand-domain.js';
 
 /**
  * Magic-link signup: the send route, the callback, the session cookie and the
@@ -58,7 +59,9 @@ const DAY = 24 * 60 * MINUTE;
 let fetchMock: Mock;
 let logged: string[];
 
+let restoreBrandDomain: (() => void) | null = null;
 beforeEach(async () => {
+  restoreBrandDomain = withoutBrandDomain();
   // Each test starts with fresh send counts; rate-limit.test.ts covers the limits.
   await pg.exec('TRUNCATE site_magic_link_rate, site_magic_link_used');
   fetchMock = vi.fn(async () => new Response('{"id":"test-message"}', { status: 200 }));
@@ -80,6 +83,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  restoreBrandDomain?.();
+  restoreBrandDomain = null;
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
@@ -394,6 +399,23 @@ describe('link base', () => {
     vi.stubEnv('VERCEL_URL', 'preview.example.test');
     await sendJson({ email: 'ada@example.com' });
     expect(sentLink().origin).toBe('https://brand.example.test');
+  });
+
+  /**
+   * The shipped value, not a stand-in. Every other test here detaches the domain
+   * to exercise the environment branches, so without this one nothing would
+   * notice if the attached domain were wrong or removed. A sign-in link is the
+   * one the user clicks from their inbox, so the host has to be the real one.
+   */
+  it('sends the emailed link to the attached domain, with nothing from the environment', async () => {
+    restoreBrandDomain?.();
+    restoreBrandDomain = null;
+    vi.stubEnv('SITE_BASE_URL', '');
+    vi.stubEnv('VERCEL_URL', 'preview.example.test');
+    expect(BRAND.domain).toBe('lacre.dev');
+    await sendJson({ email: 'ada@example.com' });
+    expect(sentLink().origin).toBe('https://lacre.dev');
+    expect(sentEmail().text).not.toContain('preview.example.test');
   });
 
   it('uses SITE_BASE_URL next, ahead of VERCEL_URL', async () => {

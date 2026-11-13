@@ -11,6 +11,7 @@ import { BRAND } from '../src/brand.js';
 import { LEGAL, REQUIRED_FACTS, SECURITY_REPORT_URL, fact, missingFacts, type LegalFacts } from '../src/legal.js';
 import { buildSecurityTxt } from '../src/security-txt.js';
 import { bundleSale } from '../src/bundle-sale.js';
+import { withoutBrandDomain } from './brand-domain.js';
 
 /**
  * #96 (draft): Terms, Privacy, the footer's legal links and security.txt. The
@@ -171,7 +172,7 @@ describe('/.well-known/security.txt', () => {
     expect(body).not.toMatch(/owner to supply/);
   });
 
-  it('has an RFC 9116 Expires under a year ahead, and no Canonical or Policy until the site has a domain', async () => {
+  it('has an RFC 9116 Expires under a year ahead', async () => {
     const before = Date.now();
     const body = await securityTxt().text();
     const expires = /^Expires: (\S+)$/m.exec(body)?.[1] ?? '';
@@ -180,9 +181,33 @@ describe('/.well-known/security.txt', () => {
     expect(days).toBeGreaterThan(0);
     expect(days).toBeLessThan(365);
     expect(body).toMatch(/^Preferred-Languages: en$/m);
-    expect(BRAND.domain).toBeNull();
-    // Both must be absolute https URLs on the site's own origin, which needs a domain.
-    expect(body).not.toMatch(/^(Canonical|Policy):/m);
+  });
+
+  /**
+   * This used to assert the opposite — that BRAND.domain was null and the two
+   * lines were absent — which was right while no domain was attached: Canonical
+   * and Policy must be absolute https URLs on the site's own origin, and there
+   * was no origin to build them from. With a domain attached the same intent is
+   * "emit them, on that origin", so the assertion is inverted rather than
+   * deleted, and the detached case is kept below.
+   */
+  it('publishes Canonical and Policy on the attached domain', async () => {
+    const body = await securityTxt().text();
+    expect(BRAND.domain).not.toBeNull();
+    const origin = `https://${BRAND.domain}`;
+    expect(body).toMatch(new RegExp(`^Canonical: ${origin.replace(/\./g, '\\.')}/\\.well-known/security\\.txt$`, 'm'));
+    expect(body).toMatch(new RegExp(`^Policy: ${origin.replace(/\./g, '\\.')}/security#report-a-vulnerability$`, 'm'));
+  });
+
+  it('omits both lines again once the domain is detached, rather than guessing an origin', async () => {
+    const restore = withoutBrandDomain();
+    try {
+      const body = await securityTxt().text();
+      expect(body).not.toMatch(/^(Canonical|Policy):/m);
+      expect(body).toMatch(/^Preferred-Languages: en$/m);
+    } finally {
+      restore();
+    }
   });
 
   it('once set, has the RFC 9116 Contact and an Expires under a year ahead', () => {

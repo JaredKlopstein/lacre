@@ -16,6 +16,7 @@ import type { BillingDb } from '../src/billing-db.js';
 import { CHECKOUT_API_PATH, createCheckoutRoute, type CheckoutRouteOptions } from '../src/checkout.js';
 import { OFF_SALE_PLANS, annualOverageDisclosure } from '../src/plans.js';
 import { TEST_FACTS, clearLegalFacts, fillLegalFacts, openSaleKeepingCheckout, stubSignInEnv } from './sale-env.js';
+import { withoutBrandDomain } from './brand-domain.js';
 
 /**
  * Authenticated checkout (#59). Stripe is an in-memory fake handed to cloud's own
@@ -88,7 +89,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await pg.close();
 });
+let restoreBrandDomain: (() => void) | null = null;
 beforeEach(async () => {
+  restoreBrandDomain = withoutBrandDomain();
   await pg.exec('TRUNCATE billing_customers RESTART IDENTITY CASCADE');
   fake = fakeStripe();
   logged = [];
@@ -111,6 +114,8 @@ beforeEach(async () => {
   pageCookie.value = '';
 });
 afterEach(() => {
+  restoreBrandDomain?.();
+  restoreBrandDomain = null;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
@@ -356,6 +361,22 @@ describe('return URLs', () => {
     await postJson({ kind: 'payg_bundle' });
     expect(lastCheckout().success_url).toBe(`${SITE}/welcome?session_id={CHECKOUT_SESSION_ID}`);
     expect(lastCheckout().cancel_url).toBe(`${SITE}/pricing?checkout=cancelled`);
+  });
+
+  /**
+   * The shipped value. These are the URLs Stripe returns a paying customer to,
+   * so they have to be on the host the customer arrived at rather than whatever
+   * the deployment happens to be called.
+   */
+  it('returns the customer to the attached domain, with nothing from the environment', async () => {
+    restoreBrandDomain?.();
+    restoreBrandDomain = null;
+    vi.stubEnv('SITE_BASE_URL', '');
+    vi.stubEnv('VERCEL_URL', 'preview.example.test');
+    expect(BRAND.domain).toBe('lacre.dev');
+    await postJson({ kind: 'payg_bundle' });
+    expect(lastCheckout().success_url).toBe('https://lacre.dev/welcome?session_id={CHECKOUT_SESSION_ID}');
+    expect(lastCheckout().cancel_url).toBe('https://lacre.dev/pricing?checkout=cancelled');
   });
 
   it('prefers BRAND.domain, then SITE_BASE_URL, then VERCEL_URL', async () => {
