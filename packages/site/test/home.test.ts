@@ -132,6 +132,7 @@ describe('home page', () => {
       ['Detects a full rebuild of anchored history by the operator', 'no', 'yes'],
       ['Detects a rebuild made before that history was anchored', 'no', 'no'],
       ['Detects backdating after the anchor', 'no', 'yes'],
+      ['Detects a receipt deleted from the start or middle of the range', 'yes', 'yes'],
       ['Detects truncation of the un-anchored tail', 'no', 'no'],
     ]);
     for (const page of ['../app/page.tsx', '../app/security/page.tsx']) {

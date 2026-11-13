@@ -87,7 +87,7 @@ const VERDICTS = [
   {
     verdict: 'VERIFICATION FAILED',
     exit: '1',
-    can: 'That the receipts the verifier names were altered, removed, reordered or wrongly signed after they were written. It lists the ranges that are still provably intact.',
+    can: 'That the receipts the verifier names were altered, reordered, wrongly signed, or deleted from the start or middle of the range the bundle says it covers. It lists the ranges that are still provably intact. Receipts cut from the end are the exception: they leave a chain that is internally consistent and simply stops earlier, so they show up as VERIFIED / NOT ANCHORED instead.',
     cannot: 'That the intact ranges can be relied on without further enquiry. Ask whoever produced the bundle for the original.',
   },
   {
