@@ -639,3 +639,93 @@ function walk(dir: string, files: string[] = []): string[] {
   }
   return files;
 }
+
+/**
+ * A paid one-off checkout this application did not create.
+ *
+ * The withdrawn $249 evidence package was sold through a Stripe Payment Link.
+ * Stripe hosts that page, so `checkoutConfigured` and every other gate in this
+ * repository are invisible to it: a link stays live from the moment it is
+ * created until someone deactivates it in the dashboard. The session it produces
+ * is mode 'payment' and carries no lacre_purchase, because a Payment Link takes
+ * no custom metadata.
+ *
+ * Before the fix the handler fell straight through: the event id was recorded,
+ * the answer was 200 handled:true, no row named the money, and Stripe held the
+ * only record that a customer had paid. The fixtures below are built from the
+ * shape Stripe sends, not from anything the checkout route produces, so they
+ * cannot accidentally be attributable.
+ */
+describe('a one-off payment this application did not sell', () => {
+  const linkCheckout = (o: { purchase?: string; amount?: number | null; currency?: string; paid?: boolean } = {}) =>
+    stripeEvent('checkout.session.completed', {
+      id: 'cs_test_paymentlink', object: 'checkout.session', mode: 'payment',
+      payment_status: o.paid === false ? 'unpaid' : 'paid', status: 'complete',
+      customer: CUSTOMER, subscription: null, payment_intent: 'pi_test_paymentlink',
+      client_reference_id: null,
+      amount_total: o.amount === undefined ? 24900 : o.amount,
+      currency: o.currency ?? 'usd',
+      // A Payment Link carries no custom metadata at all.
+      ...(o.purchase === undefined ? { metadata: {} } : { metadata: { lacre_purchase: o.purchase } }),
+    });
+
+  it('is answered 200, credits nothing, and is reported in the log instead of passing in silence', async () => {
+    const w = webhook();
+    const res = await deliver(w, linkCheckout());
+    expect(res.status).toBe(200);
+    expect(res.body.result).toMatchObject({ handled: true, duplicate: false });
+    // Still nothing credited: this code cannot know what was bought.
+    expect(await counts()).toMatchObject({ credits: 0, subscriptions: 0, events: 1 });
+    expect(w.errors).toHaveLength(1);
+    const line = w.errors[0]!;
+    expect(line).toContain('no record of what was sold exists outside Stripe');
+    // The amount is the only handle the operator has, since ids are scrubbed.
+    expect(line).toContain('amount_total=24900');
+    expect(line).toContain('currency=usd');
+    expect(line).toContain('deactivate the link');
+  });
+
+  it('carries no Stripe id, because every logged line is scrubbed of them', async () => {
+    const w = webhook();
+    await deliver(w, linkCheckout());
+    const line = w.errors[0]!;
+    for (const id of ['cs_test_paymentlink', 'pi_test_paymentlink', CUSTOMER]) {
+      expect(line, id).not.toContain(id);
+    }
+    // ...and the scrubbing is why the line has to carry the amount at all.
+    expect(line).toMatch(/amount_total=\d+/);
+  });
+
+  it('says so for an unrecognised purchase name as well as a missing one, and prints the name safely', async () => {
+    const w = webhook();
+    await deliver(w, linkCheckout({ purchase: 'ninety_day_package\nbilling webhook: forged line' }));
+    expect(w.errors).toHaveLength(1);
+    const line = w.errors[0]!;
+    // The properties that matter, rather than the exact truncation: the name is
+    // shown so the operator recognises it, it cannot forge a second log line,
+    // and it cannot run away with the message.
+    const shown = /an unrecognised purchase \(([^)]*)\)/.exec(line)?.[1];
+    expect(shown, line).toBeDefined();
+    expect(shown!.startsWith('ninety_day_package')).toBe(true);
+    expect(shown!.length).toBeLessThanOrEqual(40);
+    expect(shown).not.toMatch(/[\n\r]/);
+    expect(line.split('\n')).toHaveLength(1);
+  });
+
+  it('says nothing for a completed session that was never paid, since no money moved', async () => {
+    const w = webhook();
+    const res = await deliver(w, linkCheckout({ paid: false }));
+    expect(res.status).toBe(200);
+    expect(w.errors).toEqual([]);
+    expect(await counts()).toMatchObject({ credits: 0 });
+  });
+
+  it('leaves the bundle this application does sell exactly as it was', async () => {
+    const w = webhook();
+    const res = await deliver(w, bundleCheckout());
+    expect(res.status).toBe(200);
+    expect(await counts()).toMatchObject({ credits: 1 });
+    expect(w.errors).toEqual([]);
+    expect(w.warnings).toEqual([]);
+  });
+});
