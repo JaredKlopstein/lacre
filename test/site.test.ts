@@ -99,11 +99,18 @@ describe('index.html', () => {
   it('keeps the CSP compatible with what the page actually loads', () => {
     const csp = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(html)?.[1];
     expect(csp).toBeDefined();
-    // The page has an inline <style>, an inline <script> and Google-hosted fonts.
+    // The page has an inline <style> and an inline <script>, so both need 'unsafe-inline'.
     expect(csp).toContain("script-src 'self' 'unsafe-inline'");
-    expect(csp).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com");
-    expect(csp).toContain('font-src https://fonts.gstatic.com');
-    expect(html).toContain('https://fonts.googleapis.com/css2?');
+    expect(csp).toContain("style-src 'self' 'unsafe-inline'");
+    // It used to load its fonts from fonts.googleapis.com and fonts.gstatic.com, and
+    // this test pinned both hosts into the policy. The fonts are now served from
+    // docs/fonts, so no third party sees a visitor's IP and the policy needs no host
+    // at all. The same intent, so the assertion is inverted rather than dropped; what
+    // the page actually loads is derived from the markup in
+    // packages/site/test/pages-landing.test.ts rather than listed here.
+    expect(csp).toContain("font-src 'self'");
+    expect(csp).not.toMatch(/https?:\/\//);
+    expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
   });
 
   it('opens with a skip link to <main>, and keeps the moved banner inside the header landmark', () => {

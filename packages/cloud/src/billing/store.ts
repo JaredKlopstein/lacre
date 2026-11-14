@@ -2,10 +2,16 @@
  * Billing persistence: the only code that writes the billing tables, and only
  * the verified webhook calls it.
  *
- * Every write happens inside `applyEventOnce`, one transaction per Stripe
- * event. The event id is inserted first; if it is already there the event is a
- * replay and nothing else runs. If anything after it fails, the transaction
- * rolls back, the id goes with it, and Stripe's retry gets a clean second try.
+ * Every write that a Stripe event causes happens inside `applyEventOnce`, one
+ * transaction per event. The event id is inserted first; if it is already there
+ * the event is a replay and nothing else runs. If anything after it fails, the
+ * transaction rolls back, the id goes with it, and Stripe's retry gets a clean
+ * second try.
+ *
+ * recordFreeBundle is the exception, and is not caused by a Stripe event at
+ * all: a free first bundle is requested by email and made by hand, so the
+ * operator records the grant. Nothing in a request path calls it. It is
+ * idempotent on its own account id instead of relying on the event dedupe.
  *
  * Operators come from core, the same drizzle-orm instance as its schema (#47).
  * Nothing here logs: callers decide what to say, and say it redacted.
@@ -14,6 +20,7 @@ import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { eq } from '@lacre/core';
 import {
   billingSchema, billingCustomers, billingSubscriptions, billingBundleCredits, billingWebhookEvents,
+  billingFreeBundles,
 } from './schema.js';
 import type { CustomerLookup } from './routes.js';
 
@@ -189,6 +196,49 @@ export async function creditBundle(
     .onConflictDoNothing()
     .returning({ id: billingBundleCredits.id });
   return inserted.length > 0;
+}
+
+export interface FreeBundleGrant {
+  accountId: string;
+  note: string | null;
+  grantedAt: Date;
+}
+
+/**
+ * Records that an account has had its free first bundle, and says whether this
+ * call was the one that recorded it.
+ *
+ * Idempotent on account_id, by the unique constraint rather than by reading
+ * first: two operators recording the same grant at the same time must not
+ * produce two rows, and a check-then-insert cannot promise that.
+ *
+ * This records; it does not enforce. A free bundle is requested by email and
+ * made by hand, so there is no request path to refuse a second one. What there
+ * now is, which there was not before, is something to check against.
+ */
+export async function recordFreeBundle(
+  db: BillingDb | BillingTx,
+  grant: { accountId: string; note?: string | null },
+): Promise<'recorded' | 'already_recorded'> {
+  const inserted = await db
+    .insert(billingFreeBundles)
+    .values({ accountId: grant.accountId, note: grant.note ?? null })
+    .onConflictDoNothing({ target: billingFreeBundles.accountId })
+    .returning({ id: billingFreeBundles.id });
+  return inserted.length > 0 ? 'recorded' : 'already_recorded';
+}
+
+/** The account's free-bundle grant, or null when it has not had one. */
+export async function freeBundleGrant(
+  db: BillingDb | BillingTx,
+  accountId: string,
+): Promise<FreeBundleGrant | null> {
+  const [row] = await db
+    .select({ accountId: billingFreeBundles.accountId, note: billingFreeBundles.note, grantedAt: billingFreeBundles.grantedAt })
+    .from(billingFreeBundles)
+    .where(eq(billingFreeBundles.accountId, accountId))
+    .limit(1);
+  return row ?? null;
 }
 
 /**

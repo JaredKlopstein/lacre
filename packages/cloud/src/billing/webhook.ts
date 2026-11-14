@@ -306,13 +306,54 @@ async function checkoutCompleted(tx: BillingTx, session: Stripe.Checkout.Session
     return;
   }
 
-  if (session.mode === 'payment' && session.metadata?.lacre_purchase === 'payg_bundle' && session.payment_status === 'paid') {
-    await creditBundle(tx, {
-      stripeCheckoutSessionId: session.id,
-      stripeCustomerId: customer,
-      stripePaymentIntentId: idOf(session.payment_intent),
-    });
+  if (session.mode === 'payment') {
+    if (session.metadata?.lacre_purchase === 'payg_bundle' && session.payment_status === 'paid') {
+      await creditBundle(tx, {
+        stripeCheckoutSessionId: session.id,
+        stripeCustomerId: customer,
+        stripePaymentIntentId: idOf(session.payment_intent),
+      });
+      return;
+    }
+    // Money arrived for something this application did not sell. The branch
+    // above is the only one-off purchase it creates, and every session it
+    // creates carries lacre_purchase; a paid session without it was created
+    // elsewhere, a Stripe Payment Link being the obvious way. Stripe hosts that
+    // page and never consults this code, so nothing here could have refused the
+    // payment -- but it must not pass in silence either, which is what used to
+    // happen: the handler fell through, the event id was recorded, the answer
+    // was 200 handled:true, and Lacre's only record of the sale was Stripe's.
+    //
+    // The subscription branch above already refuses to guess, by throwing when
+    // lacre_interval is absent. This is the same asymmetry resolved the other
+    // way: a log rather than a throw, because a throw makes Stripe retry a
+    // permanently failing event and Stripe disables an endpoint that keeps
+    // failing -- which would cost the recording of real purchases to make a
+    // point about one that cannot be recorded anyway.
+    if (paid) log.error(unattributedPayment(session));
   }
+}
+
+/**
+ * What the operator needs in order to find a payment this application cannot
+ * account for, carrying no Stripe id, because every logged line is scrubbed of
+ * them by design. The amount is what makes it findable in the dashboard, so it
+ * is given in minor units exactly as Stripe sends it rather than divided by a
+ * hundred, which is wrong for some currencies.
+ */
+function unattributedPayment(session: Stripe.Checkout.Session): string {
+  const purchase = typeof session.metadata?.lacre_purchase === 'string'
+    ? `an unrecognised purchase (${session.metadata.lacre_purchase.replace(/[^\x20-\x7e]/g, '').slice(0, 40)})`
+    : 'no stated purchase';
+  return (
+    `billing webhook: a completed one-off payment names ${purchase}, so nothing was credited to any ` +
+    `account and no record of what was sold exists outside Stripe. amount_total=${session.amount_total ?? 'unstated'} ` +
+    `currency=${session.currency ?? 'unstated'}. ` +
+    'Every checkout session this application creates carries lacre_purchase, so this one was created ' +
+    'elsewhere -- a Stripe Payment Link, for instance, which Stripe hosts and this code cannot gate. ' +
+    'Find it in the Stripe dashboard by that amount and this time, settle what the customer is owed, and ' +
+    'deactivate the link if it should not be selling. Stripe ids are redacted from this log by design.'
+  );
 }
 
 function mismatchWarning(link: 'customer_linked_elsewhere' | 'account_linked_elsewhere'): string {

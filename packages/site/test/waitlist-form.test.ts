@@ -22,7 +22,7 @@ import {
   waitlistResult,
 } from '../app/pricing/waitlist-form.js';
 import { usedTokenSchema } from '../src/auth/used-tokens.js';
-import { CONTACT_PATH, FLEET_SIZES, HONEYPOT_FIELD } from '../src/contact.js';
+import { CONTACT_CODES, CONTACT_PATH, FLEET_SIZES, HONEYPOT_FIELD } from '../src/contact.js';
 
 /**
  * The Cloud waitlist form posts to the existing contact route with that route's
@@ -168,7 +168,7 @@ describe('waitlist result, announced (persona review: Sam 2, Marcus 9)', () => {
   });
 
   it('offers the public repository as a link when nothing reached the team, and invents no email', () => {
-    expect([...WAITLIST_FALLBACK_RESULTS]).toEqual(['failed', 'unavailable', 'error']);
+    expect([...WAITLIST_FALLBACK_RESULTS]).toEqual(['failed', 'not_configured', 'unavailable', 'error']);
     const src = readFileSync(new URL('../app/pricing/waitlist-form.tsx', import.meta.url), 'utf8');
     expect(src).toContain('<a href={BRAND.repository}>');
     expect(src).not.toMatch(/mailto:|@[a-z0-9-]+\.[a-z]{2,}/i);
@@ -224,7 +224,10 @@ describe('waitlist result', () => {
     expect(waitlistResult(413, 'BODY_TOO_LARGE')).toBe('too_large');
     expect(waitlistResult(429, 'RATE_LIMITED')).toBe('rate_limited');
     expect(waitlistResult(502, 'CONTACT_FORWARD_FAILED')).toBe('failed');
-    expect(waitlistResult(503, 'CONTACT_UNAVAILABLE')).toBe('unavailable');
+    expect(waitlistResult(503, CONTACT_CODES.unavailable)).toBe('unavailable');
+    // Both 503s, told apart by the code, because only one of them can be waited out.
+    expect(waitlistResult(503, CONTACT_CODES.notConfigured)).toBe('not_configured');
+    expect(waitlistResult(503, undefined)).toBe('unavailable');
     expect(waitlistResult(500, undefined)).toBe('error');
   });
 
@@ -234,5 +237,42 @@ describe('waitlist result', () => {
     expect(src).toContain('fetch(CONTACT_PATH,');
     expect(src).toContain("'content-type': 'application/json'");
     expect(src).not.toMatch(/\.message\b/);
+  });
+});
+
+/**
+ * The waitlist reads the route's answer, so the sentence it shows has to come
+ * from what the route actually returns for the state the site is in.
+ *
+ * In production CONTACT_FORWARD_URL is unset, so this is the only answer the
+ * waitlist receives: before the fix it said "The waitlist is unavailable right
+ * now... Try again in a few minutes", which no amount of waiting would have
+ * made true. The route is run for real here and its answer is fed to the same
+ * function the component calls.
+ */
+describe('the waitlist tells the truth when the site cannot send at all', () => {
+  it('reads not_configured from the route\'s own answer, and offers the repository instead of a retry', async () => {
+    vi.stubEnv('CONTACT_FORWARD_URL', '');
+    const res = await postToRoute(
+      filled({ name: 'Ada', email: 'ada@example.com', company: 'Analytical Engines Ltd', fleetSize: FLEET_SIZES[1], need: WAITLIST_NEED }),
+    );
+    expect(res.status).toBe(503);
+    const { error } = await res.json();
+    expect(error.retryable).toBe(false);
+    const result = waitlistResult(res.status, error.code);
+    expect(result).toBe('not_configured');
+    // Nothing was forwarded, so the claim "we'll email you when it opens" was never earned.
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const shown = renderToStaticMarkup(createElement(WaitlistForm, {}));
+    expect(shown).toContain(`id="${WAITLIST_ALERT_ID}"`);
+    // The sentence for this result, read from the component's own source so the
+    // assertion cannot pass against copy the component does not use.
+    const src = readFileSync(new URL('../app/pricing/waitlist-form.tsx', import.meta.url), 'utf8');
+    const sentence = new RegExp(`${result}:\\s*'([^']+)'`).exec(src)?.[1];
+    expect(sentence, src).toBeDefined();
+    expect(sentence).not.toMatch(/try again|retry/i);
+    expect(sentence).toContain('will not change that');
+    expect(WAITLIST_FALLBACK_RESULTS).toContain(result);
   });
 });

@@ -4,8 +4,9 @@
  *
  * `migrations/0000_billing.sql` is the hand-written migration for the first
  * four tables, `migrations/0001_overage.sql` for the three overage tables
- * after them, and `migrations/0002_overage_retry.sql` for the retry columns on
- * billing_usage_reports. The owner applies them to Neon by hand, in that order. Nothing in
+ * after them, `migrations/0002_overage_retry.sql` for the retry columns on
+ * billing_usage_reports, and `migrations/0003_free_bundles.sql` for
+ * billing_free_bundles. The owner applies them to Neon by hand, in that order. Nothing in
  * this package runs them, at startup or at deploy. Tests apply them to an
  * in-process Postgres and check they match this file column for column.
  *
@@ -69,6 +70,34 @@ export const billingBundleCredits = pgTable('billing_bundle_credits', {
     foreignColumns: [billingCustomers.stripeCustomerId],
   }),
 ]);
+
+/**
+ * One row per account that has had its free first evidence bundle.
+ *
+ * /pricing and the Terms both say the first bundle is free, "one per customer".
+ * Nothing recorded that, because a free bundle never goes through checkout: it
+ * is requested by email and made by hand, so billing_bundle_credits -- one row
+ * per paid Checkout Session -- could never hold one. When a second request
+ * arrived there was nothing to check it against.
+ *
+ * This table is the record. It is not enforcement: no code path refuses a
+ * second free bundle, because no code path fulfils the first one. It makes the
+ * claim checkable, which is the part that was missing.
+ *
+ * The key is the account id, the same `acct_` value checkout sends as
+ * client_reference_id and billing_customers.account_id holds, so a free bundle
+ * and a paid one key to the same customer. It is a one-way hash of the email
+ * address, not the address: the Privacy Policy says no list of addresses is
+ * kept, and this must not become one.
+ */
+export const billingFreeBundles = pgTable('billing_free_bundles', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+  /** Unique: the claim is one per customer, so the database says so too. */
+  accountId: text('account_id').notNull().unique(),
+  /** What the operator wants to remember about the grant. Never an email address. */
+  note: text('note'),
+  grantedAt: timestamptz('granted_at').notNull().defaultNow(),
+});
 
 /** Every Stripe event id the webhook has applied. A replay finds its id here
  *  and changes nothing. */
@@ -158,4 +187,5 @@ export const billingOverageSubscriptions = pgTable('billing_overage_subscription
 export const billingSchema = {
   billingCustomers, billingSubscriptions, billingBundleCredits, billingWebhookEvents,
   billingBundleExports, billingUsageReports, billingOverageSubscriptions,
+  billingFreeBundles,
 };

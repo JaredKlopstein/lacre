@@ -39,6 +39,15 @@ const repositoryLink = (
 const OUTCOME_MESSAGES: Record<ContactOutcome, ReactNode> = {
   sent: `Thanks. The ${BRAND.name} team has your message and will reply to the email you gave.`,
   invalid: 'Some details were missing or not valid, so nothing was sent. Check each field and send it again.',
+  // No "try again": the form cannot send from this deployment until the operator
+  // configures it, so a retry would fail the same way for as long as a visitor
+  // is willing to keep trying. The one way in that does work is offered instead.
+  not_configured: (
+    <>
+      This form is not able to send messages yet, so nothing was sent, and trying again will not change
+      that. Reach the team through {repositoryLink}, where issues are public.
+    </>
+  ),
   unavailable: (
     <>
       The contact form is unavailable right now, so nothing was sent. Try again in a few minutes, or reach the team
@@ -58,6 +67,7 @@ const OUTCOME_MESSAGES: Record<ContactOutcome, ReactNode> = {
 const OUTCOME_TITLES: Record<ContactOutcome, string> = {
   sent: 'Message sent',
   invalid: 'Error: check the marked fields',
+  not_configured: 'Contact form cannot send',
   unavailable: 'Contact form unavailable',
   failed: 'Error: message not delivered',
   rate_limited: 'Message not sent: too many sent',
