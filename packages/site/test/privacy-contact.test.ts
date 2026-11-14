@@ -116,12 +116,12 @@ describe('the Privacy Policy, where no message can be sent', () => {
     expect(body).toContain('nothing here for us to hold');
     expect(body).not.toContain('to our team inbox');
     // The retention promise goes with the flow it was about.
-    expect(body).not.toMatch(/We keep what reaches the inbox/);
+    expect(body).not.toMatch(/what reaches the inbox/);
   });
 
   it('still names the chain-file retention, which is a different thing and unaffected', () => {
     vi.stubEnv(CONTACT_FORWARD_ENV, '');
-    expect(render()).toMatch(/we keep the chain file and the bundle for \S/);
+    expect(render()).toMatch(/we delete it and the bundle within \S/);
   });
 
   it('offers the two ways in that do work', () => {
@@ -148,7 +148,7 @@ describe('the Privacy Policy, once a message can be sent', () => {
     restore = withContactProcessor('A Forwarding Service, Inc.');
     const body = render();
     expect(body).toContain('send your name, work email, company, fleet size and message to our team inbox');
-    expect(body).toContain(`We keep what reaches the inbox for ${LEGAL.contactRetention}`);
+    expect(body).toContain(`We delete what reaches the inbox within ${LEGAL.contactRetention}`);
     expect(body).toContain('A Forwarding Service, Inc., which receives messages sent through the contact form');
     expect(body).not.toContain('Incomplete.');
   });

@@ -62,7 +62,8 @@ export default function PrivacyPage() {
             <>
               The Enterprise contact form and the early-access waitlist send your name, work email, company, fleet
               size and message to our team inbox, so we can reply. Nothing you type is stored on this website
-              itself. We keep what reaches the inbox for {fact('contactRetention')}.
+              itself. We delete what reaches the inbox within {fact('contactRetention')}, as a step we carry out
+              rather than an automatic expiry.
             </>
           ) : (
             <>
@@ -78,13 +79,16 @@ export default function PrivacyPage() {
           <strong>Your chain file, if you buy an evidence bundle.</strong> To make the bundle we ask you to email us
           your chain file. It holds your receipts, including the action details your agents recorded, and your
           agents’ public keys. It never holds a signing key, and we never ask for one. We use it only to timestamp
-          the chain and build your bundle, and we keep the chain file and the bundle for{' '}
-          {fact('bundleRetention')}, so a copy exists if you need it again.
+          the chain and build your bundle. It stays in the inbox named below, and we delete it and the bundle
+          within {fact('bundleRetention')}, so a copy exists if you need it again in that time. There is no
+          automatic expiry: deleting them is a step we carry out, so if you want yours gone sooner, ask and we
+          will.
         </li>
         <li>
           <strong>Abuse protection.</strong> To limit how often sign-in links and messages can be sent, we count
           requests per email address and per IP address. Only one-way hashes are stored, never the address
-          itself, and the counts are deleted after 15 minutes.
+          itself, and the counts expire after 15 minutes. This one is enforced by the code that reads them, not
+          by us remembering: an expired count is ignored and overwritten.
         </li>
         <li>
           <strong>Server logs.</strong> Our own logs record request identifiers and error types, not your email or
@@ -124,6 +128,12 @@ export default function PrivacyPage() {
         You can ask what personal data we hold about you, or ask us to correct or delete it, by writing to{' '}
         {fact('contactEmail')}. We delete what we are not required to keep; payment records may have to be kept
         for tax and accounting purposes.
+      </p>
+      <p>
+        Every period above except the 15-minute one is a commitment we keep by hand, in the inbox and the
+        accounts that hold the data. Saying so is the point: a period no system enforces is worth exactly what
+        the people behind it are worth, and you should know which kind each one is before you decide to trust
+        us with anything.
       </p>
 
       <h2>Changes</h2>

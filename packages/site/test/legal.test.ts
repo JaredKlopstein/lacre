@@ -115,7 +115,11 @@ describe('Terms and Privacy pages', () => {
     const html = privacy();
     expect(html).toContain('Your chain file, if you buy an evidence bundle.');
     expect(html).toContain('It never holds a signing key, and we never ask for one.');
-    expect(html).toMatch(/we keep the chain file and the bundle for\s+90 days/);
+    // Was /we keep the chain file and the bundle for\s+90 days/. The period is
+    // unchanged; the sentence no longer implies something automatic enforces it,
+    // because nothing does. Same intent, so the assertion moves rather than goes.
+    expect(html).toMatch(/we delete it and the bundle within\s+90 days/);
+    expect(html).toContain('There is no automatic expiry');
     expect(html).toContain('Microsoft 365 (Exchange Online), which hosts the inbox that receives chain files for evidence bundles.');
     expect(html).toContain('We receive them only if you send us your chain file');
     expect(html).not.toContain('we never receive them');
