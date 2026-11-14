@@ -40,7 +40,9 @@ const text = (status: number, body: string, headers: Record<string, string> = {}
 function unavailable(cause: string): Response {
   const requestId = crypto.randomUUID();
   console.error(`auth: request ${requestId}: ${cause}`);
-  return text(503, `Sign-in is unavailable right now. No session was created. Request id: ${requestId}.`, {
+  // Same wording as the magic-link route's 503, and for the same reason: every
+  // cause is a configuration gap, so "right now" invited a retry that cannot work.
+  return text(503, `Email sign-in is not configured on this server yet. No session was created. Request id: ${requestId}.`, {
     'x-request-id': requestId,
   });
 }

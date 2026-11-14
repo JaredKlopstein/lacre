@@ -88,7 +88,7 @@ async function expectUnavailable(res: Response, cause: string): Promise<void> {
   const requestId = res.headers.get('x-request-id');
   expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
   const body = await res.clone().text();
-  expect(body).toContain('Sign-in is unavailable right now.');
+  expect(body).toContain('Email sign-in is not configured on this server yet.');
   expect(body).toContain(requestId);
   const everything = [...res.headers].map(([k, v]) => `${k}: ${v}`).join('\n') + '\n' + body;
   for (const name of [DATABASE_URL_ENV, 'SESSION_SECRET', 'EMAIL_', 'migrations', '.sql']) {

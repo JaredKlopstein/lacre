@@ -75,7 +75,12 @@ export async function POST(request: Request): Promise<Response> {
     console.error(`auth: request ${requestId}: ${cause}`);
     const error: ErrorBody = {
       code: 'SIGNUP_UNAVAILABLE',
-      message: `Sign-in is unavailable right now. ${NOTHING_SENT}`,
+      // Not "unavailable right now": every cause this helper answers for is a
+      // configuration gap, so waiting changes nothing, and retryable already
+      // says so. The wording now matches /signup's own ("Email sign-up is not
+      // open yet"), which was already honest, and the fix note below, which
+      // already said the operator has to finish the configuration.
+      message: `Email sign-in is not configured on this server yet. ${NOTHING_SENT}`,
       retryable: false,
       fix: { note: `The site operator must finish the server configuration. Quote request id ${requestId}.` },
     };
