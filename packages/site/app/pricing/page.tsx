@@ -99,8 +99,10 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
             </ul>
             {card.id === 'cloud' && billing === 'annual' && <p role="note">{pricingAnnualOverageDisclosure()}</p>}
             <p data-cta={card.id === 'bundle' ? 'primary' : 'secondary'}>
-              {/* The package pays on Stripe's own page, so its button is a plain link off the site. */}
-              {card.id === 'package' ? <a href={card.cta.href}>{card.cta.label}</a> : <Link href={card.cta.href}>{card.cta.label}</Link>}
+              {/* Every card left goes to a route on this site. The package, which paid on
+                  Stripe's own page and so needed a plain <a>, was withdrawn in #235 and is
+                  no longer a CardId, which made that branch unreachable. */}
+              <Link href={card.cta.href}>{card.cta.label}</Link>
             </p>
           </article>
         ))}
