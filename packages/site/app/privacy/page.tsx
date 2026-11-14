@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BRAND } from '../../src/brand';
+import { contactForwarding } from '../../src/contact-forwarding';
 import { LEGAL, TERMS_PATH, fact } from '../../src/legal';
 import { LegalNotice } from '../../src/legal-notice';
 
@@ -13,10 +14,27 @@ export const metadata: Metadata = {
 // the billing database). Facts only the owner can supply come from src/legal.ts and
 // render as bracketed placeholders until set.
 export default function PrivacyPage() {
+  // Whether this deployment can send a message at all. While it cannot -- which
+  // is production today, with CONTACT_FORWARD_URL unset -- the clause below
+  // described a flow that does not occur: nothing is forwarded to any inbox and
+  // nothing is kept, and both forms tell the visitor so.
+  const forwarding = contactForwarding();
+  // Setting CONTACT_FORWARD_URL without naming who receives the messages means
+  // this page is describing a disclosure it does not make. That must be visible
+  // on the page rather than discovered later, so it says so where the effective
+  // date is, and test/privacy-contact.test.ts holds it there.
+  const undisclosed = forwarding && LEGAL.contactProcessor === null;
   return (
     <article>
       <h1>Privacy</h1>
       <LegalNotice />
+      {undisclosed && (
+        <p role="note" className="legal-draft">
+          <strong>Incomplete.</strong> Messages sent through the contact form and the waitlist are passed to a
+          service that is not yet named below. Until it is, do not send anything through them you would not send
+          to an undisclosed third party; write to {fact('contactEmail')} instead.
+        </p>
+      )}
 
       <h2>Who is responsible</h2>
       <p>
@@ -39,9 +57,22 @@ export default function PrivacyPage() {
           store your card number.
         </li>
         <li>
-          <strong>Messages you send us.</strong> The Enterprise contact form and the early-access waitlist send
-          your name, work email, company, fleet size and message to our team inbox, so we can reply. We keep them
-          for {fact('contactRetention')}.
+          <strong>Messages you send us.</strong>{' '}
+          {forwarding ? (
+            <>
+              The Enterprise contact form and the early-access waitlist send your name, work email, company, fleet
+              size and message to our team inbox, so we can reply. Nothing you type is stored on this website
+              itself. We keep what reaches the inbox for {fact('contactRetention')}.
+            </>
+          ) : (
+            <>
+              The Enterprise contact form and the early-access waitlist cannot send messages at the moment, and
+              both say so when you try. Nothing you type into them is sent anywhere, stored on this website or
+              kept by us, so until that changes there is nothing here for us to hold. You can reach us at{' '}
+              {fact('contactEmail')}, or through the public issues on{' '}
+              <a href={BRAND.repository}>GitHub</a>.
+            </>
+          )}
         </li>
         <li>
           <strong>Your chain file, if you buy an evidence bundle.</strong> To make the bundle we ask you to email us
@@ -83,6 +114,9 @@ export default function PrivacyPage() {
         <li>Stripe, which takes payments.</li>
         <li>{fact('emailProvider')}, which delivers sign-in emails.</li>
         <li>{fact('mailboxProvider')}, which hosts the inbox that receives chain files for evidence bundles.</li>
+        {forwarding && LEGAL.contactProcessor && (
+          <li>{fact('contactProcessor')}, which receives messages sent through the contact form and the waitlist.</li>
+        )}
       </ul>
 
       <h2>Your choices and rights</h2>
