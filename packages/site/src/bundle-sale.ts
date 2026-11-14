@@ -12,17 +12,18 @@
  * Checkout is checked with cloud's own config loader, the one the checkout route
  * runs, so the two cannot disagree about which variables it needs. Sign-in is
  * checked by presence only, quietly: the auth helpers log a line each time they
- * find a gap, and this runs on every pricing page view. A value that is set but
- * malformed still fails in the route, which answers with its own honest message.
+ * find a gap, and this runs on every pricing page view. An auth value that is set
+ * but malformed still fails in the route, which answers with its own honest
+ * message; the link base and the Stripe configuration are checked by the same
+ * functions their routes use, so for those two the gate cannot be the optimist.
  *
  * The result names which of the three is missing, for tests and the server only.
  * Pages show one generic line and never a variable name.
  */
 import { loadBillingConfig } from '@lacre/cloud/dist/billing/config.js';
-import { AUTH_ENV, MAGIC_LINK_FLAG_ENV } from './auth/email';
+import { AUTH_ENV, MAGIC_LINK_FLAG_ENV, linkBase } from './auth/email';
 import { BILLING_DATABASE_ENV } from './billing-db';
 import { DATABASE_URL_ENV } from './auth/used-tokens';
-import { BRAND } from './brand';
 import { LEGAL, missingFacts, type LegalFacts } from './legal';
 
 export type SaleBlocker = 'terms' | 'checkout' | 'sign-in';
@@ -51,8 +52,17 @@ const set = (env: Env, name: string) => !!env[name]?.trim();
  * is otherwise one environment variable away, not a thing checkout needs.
  */
 function checkoutConfigured(env: Env): boolean {
-  const base = BRAND.domain !== null || set(env, 'SITE_BASE_URL') || set(env, 'VERCEL_URL');
-  if (!base || !set(env, BILLING_DATABASE_ENV)) return false;
+  // Asked of linkBase, the function the checkout route itself calls, rather than
+  // of the variables it reads. This used to be
+  //   BRAND.domain !== null || set(env, 'SITE_BASE_URL') || set(env, 'VERCEL_URL')
+  // which tested presence, not usability: a domain linkBase rejects, a
+  // SITE_BASE_URL that is plain http on a public host, or a VERCEL_URL that is
+  // not a host all satisfied it. The sale would then open, a buyer would reach
+  // checkout, and the route would answer 500 CHECKOUT_UNAVAILABLE for want of
+  // the base this gate had just said was there. The gate and the route now
+  // cannot disagree, in the same way the Stripe half already goes through
+  // cloud's own config loader.
+  if (linkBase(env) === null || !set(env, BILLING_DATABASE_ENV)) return false;
   try {
     // The same call cloud's checkout handler makes, plus the webhook secret; it
     // throws on any gap and logs nothing.
