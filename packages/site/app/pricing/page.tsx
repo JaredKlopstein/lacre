@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BRAND } from '../../src/brand';
 import { bundleSale } from '../../src/bundle-sale';
-import { packageSale } from '../../src/package-sale';
 import {
   BILLING_PARAM,
   BILLINGS,
@@ -43,8 +42,6 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const cancelled = params.checkout === 'cancelled';
   // Read on each request, so the bundle opens by itself once checkout, sign-in and the Terms are ready.
   const sale = bundleSale();
-  // The evidence package: shown only with the Terms in effect and the owner's Payment Link set.
-  const pkg = packageSale();
   const bundleHow = sale.open ? 'how a bundle is made today' : 'how a bundle will be made';
 
   return (
@@ -60,7 +57,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
         <p data-definition="evidence-bundle">{BUNDLE_DEFINITION}</p>
       </section>
       <section aria-label="Plans">
-        {priceCards(billing, { bundleOpen: sale.open, packageHref: pkg.href }).map((card) => (
+        {priceCards(billing, { bundleOpen: sale.open }).map((card) => (
           <article key={card.id} data-tier={card.id}>
             <h2>{card.title}</h2>
             <p>{card.price}</p>

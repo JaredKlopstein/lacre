@@ -19,7 +19,14 @@ import { LEGAL } from './legal';
 
 const usd = (amount: number) => `$${amount}`;
 
-/** For pages that describe the offers in words (the Terms): counts only, never a price. */
+/**
+ * For pages that describe the offers in words (the Terms): counts only, never a price.
+ *
+ * NINETY_DAY_PACKAGE stays although the package is no longer offered: /terms and
+ * /privacy still describe its obligations, because withdrawing an offer does not
+ * end the rights of anyone who already bought it. Those clauses go only once it
+ * is established that nobody did.
+ */
 export { FREE_FIRST_BUNDLES, NINETY_DAY_PACKAGE };
 
 export type Billing = 'monthly' | 'annual';
@@ -90,7 +97,7 @@ export interface CallToAction {
   readonly href: string;
 }
 
-export type CardId = 'core' | 'bundle' | 'package' | 'cloud' | 'enterprise';
+export type CardId = 'core' | 'bundle' | 'cloud' | 'enterprise';
 
 export interface PriceCard {
   readonly id: CardId;
@@ -109,7 +116,7 @@ export interface PriceCard {
   readonly cta: CallToAction;
 }
 
-const ON_SALE_CTAS: Record<Exclude<CardId, 'package'>, CallToAction> = {
+const ON_SALE_CTAS: Record<CardId, CallToAction> = {
   core: { label: 'Start free', href: GETTING_STARTED_URL },
   bundle: { label: 'Buy a bundle', href: '/checkout' },
   cloud: { label: 'Buy Cloud', href: '/checkout' },
@@ -120,15 +127,11 @@ const WAITLIST_CTA: CallToAction = { label: 'Join the waitlist', href: WAITLIST_
 const BUNDLE_SOON_CTA: CallToAction = { label: 'Tell me when bundles open', href: WAITLIST_HREF };
 
 /** A card's button, from its off-sale flag first and its id second. */
-export function cardCta(id: Exclude<CardId, 'package'>, offSale: boolean): CallToAction {
+export function cardCta(id: CardId, offSale: boolean): CallToAction {
   return offSale ? WAITLIST_CTA : ON_SALE_CTAS[id];
 }
 
-/** The evidence package's button label. Its href is the owner's Stripe Payment Link (src/package-sale.ts). */
-export const PACKAGE_CTA_LABEL = `Buy the ${NINETY_DAY_PACKAGE.days}-day package`;
-
-function withCta(card: Omit<PriceCard, 'cta'>, packageHref: string | null): PriceCard {
-  if (card.id === 'package') return { ...card, cta: { label: PACKAGE_CTA_LABEL, href: packageHref ?? WAITLIST_HREF } };
+function withCta(card: Omit<PriceCard, 'cta'>): PriceCard {
   if (card.opensSoon) return { ...card, cta: BUNDLE_SOON_CTA };
   return { ...card, cta: cardCta(card.id, card.offSale === true) };
 }
@@ -136,11 +139,6 @@ function withCta(card: Omit<PriceCard, 'cta'>, packageHref: string | null): Pric
 export interface CardOptions {
   /** Whether a bundle can be bought here now (src/bundle-sale.ts). Closed unless said otherwise. */
   readonly bundleOpen?: boolean;
-  /**
-   * The evidence package's Payment Link when it is offered (src/package-sale.ts).
-   * Its card is included only when this is set.
-   */
-  readonly packageHref?: string | null;
 }
 
 /** The free first bundle, shown under the bundle price wherever the price is. */
@@ -306,20 +304,7 @@ export function pricingFaq(plan: Plan = PLANS.cloud): FaqEntry[] {
   ];
 }
 
-/** The evidence package's terms, from NINETY_DAY_PACKAGE: what the buyer gets and what they send. */
-export function packageTerms(): string[] {
-  const { days, weeklyAnchors, anchorsKeptDaysAfterTerm } = NINETY_DAY_PACKAGE;
-  return [
-    `Your chain anchored once a week for ${days} days: ${weeklyAnchors} anchors, each timestamped by a public RFC 3161 authority`,
-    `${BRAND.name} keeps every anchor it makes for you for the ${days}-day term plus ${anchorsKeptDaysAfterTerm} days, ` +
-      'so a third party holds your anchor history',
-    'A call with your auditor or reviewer, walking through verifying the evidence offline',
-    `You send your chain file, ${CHAIN_FILE}, for each anchor. Never your signing key (${SIGNING_KEY_FILE})`,
-    'One payment through Stripe, no subscription. Made by hand',
-  ];
-}
-
-export function priceCards(billing: Billing, { bundleOpen = false, packageHref = null }: CardOptions = {}): PriceCard[] {
+export function priceCards(billing: Billing, { bundleOpen = false }: CardOptions = {}): PriceCard[] {
   const { free, cloud, enterprise } = PLANS;
   const cards: Omit<PriceCard, 'cta'>[] = [
     {
@@ -338,18 +323,6 @@ export function priceCards(billing: Billing, { bundleOpen = false, packageHref =
       badge: bundleOpen ? 'Available now' : 'Opens soon',
       ...(bundleOpen ? {} : { opensSoon: true }),
     },
-    // Shown only while the Terms are in effect and the owner's Payment Link is set.
-    ...(packageHref
-      ? [
-          {
-            id: 'package' as const,
-            title: `${NINETY_DAY_PACKAGE.days}-day evidence package`,
-            price: usd(NINETY_DAY_PACKAGE.priceUsd),
-            priceNote: `for ${NINETY_DAY_PACKAGE.days} days`,
-            terms: packageTerms(),
-          },
-        ]
-      : []),
     {
       id: 'cloud',
       title: cloud.name,
@@ -370,5 +343,5 @@ export function priceCards(billing: Billing, { bundleOpen = false, packageHref =
       ],
     },
   ];
-  return cards.map((card) => withCta(card, packageHref));
+  return cards.map((card) => withCta(card));
 }
