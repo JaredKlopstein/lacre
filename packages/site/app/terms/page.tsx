@@ -45,14 +45,29 @@ export default function TermsPage() {
         store your card number. Plans marked early access are not on sale and cannot be bought. An evidence bundle
         is a one-time purchase.
         {FREE_FIRST_BUNDLES > 0 &&
-          ` Your first evidence bundle is free, one per customer: request it by email at ${fact('contactEmail')} instead of checking out, and we make it the same way as a paid one.`}{' '}
-        The {NINETY_DAY_PACKAGE.days}-day evidence package is a one-time purchase through a Stripe payment link.
-        Over those {NINETY_DAY_PACKAGE.days} days we anchor your chain once a week, {NINETY_DAY_PACKAGE.weeklyAnchors}{' '}
-        anchors in all, from the chain file you send each time; we keep every anchor we make for you for the
-        package term plus {NINETY_DAY_PACKAGE.anchorsKeptDaysAfterTerm} days; and we hold one call with your auditor
-        or reviewer to walk through verifying the evidence offline.
+          ` Your first evidence bundle is free, one per customer: request it by email at ${fact('contactEmail')} instead of checking out, and we make it the same way as a paid one.`}
       </p>
 
+      {/*
+        * The 90-day evidence package is no longer sold, and the paragraph describing
+        * what it was has gone from "Purchases and payment" above. Its refund clause,
+        * below, deliberately stays.
+        *
+        * Anyone holding the Stripe payment link can still buy the package: Stripe
+        * hosts that page and nothing in this repository gates it. For such a buyer
+        * this clause is the only written statement of what they can get back, and
+        * the clause above it does not cover them -- it is scoped to "an evidence
+        * bundle we have not yet delivered", which is a different product. Delete
+        * this and someone who paid for a package has no applicable refund terms
+        * at all. (No figure here on purpose: legal.test.ts keeps prices out of
+        * these two files, source and rendered output alike.)
+        *
+        * So the Terms carry a refund clause for a product they no longer describe.
+        * That reads untidy and it is correct: "not sold; if you bought one, here is
+        * your refund right" is what a withdrawn product's terms should say. It goes
+        * once the payment link is deactivated AND Stripe confirms nobody bought one,
+        * and not before.
+        */}
       <h2>Refunds and cancellation</h2>
       <p>
         {refundDays === null
