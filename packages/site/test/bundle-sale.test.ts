@@ -3,10 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PRICE_ENV } from '@lacre/cloud/dist/billing/config.js';
 import { bundleSale } from '../src/bundle-sale.js';
+import { linkBase } from '../src/auth/email.js';
 import { LEGAL, missingFacts } from '../src/legal.js';
 import PricingPage from '../app/pricing/page.js';
 import { TEST_FACTS, clearLegalFacts, clearSaleEnv, fillLegalFacts, stubCheckoutEnv, stubSignInEnv } from './sale-env.js';
-import { withoutBrandDomain } from './brand-domain.js';
+import { withBrandDomain, withoutBrandDomain } from './brand-domain.js';
 import { BRAND } from '../src/brand.js';
 
 /**
@@ -191,5 +192,101 @@ describe('the pricing page follows the sale', () => {
     const src = readFileSync(new URL('../app/pricing/page.tsx', import.meta.url), 'utf8');
     expect(src).toMatch(/const sale = bundleSale\(\);/);
     expect(src).not.toMatch(/force-static|generateStaticParams/);
+  });
+});
+
+/**
+ * The gate must never be more optimistic about the link base than the route it
+ * gates.
+ *
+ * src/checkout.ts:104 refuses with 500 CHECKOUT_UNAVAILABLE when linkBase()
+ * returns null. The gate used to ask a different question --
+ *   BRAND.domain !== null || set(env, 'SITE_BASE_URL') || set(env, 'VERCEL_URL')
+ * -- which tested whether a value was present, not whether an origin came out of
+ * it. Each case below sets a base that is present and unusable, so the old
+ * expression said yes while linkBase said null: the sale opens, a buyer signs in,
+ * reaches checkout and is told the server is misconfigured.
+ *
+ * The expectation is not written down here. It is read from linkBase itself, for
+ * whatever the case produced, so this test cannot drift from the route's rule.
+ */
+describe('the sale gate cannot accept a base the checkout route would refuse', () => {
+  /** Bases that are present but produce no origin. Each leaves the rest of the sale fully configured. */
+  const UNUSABLE: Record<string, () => () => void> = {
+    'a domain with a path in it': () => withBrandDomain('lacre.dev/landing'),
+    'a domain that is not a host': () => withBrandDomain('not a host'),
+    'an empty-looking domain': () => withBrandDomain(' '),
+    'SITE_BASE_URL on plain http, on a public host': () => {
+      const restore = withoutBrandDomain();
+      vi.stubEnv('SITE_BASE_URL', 'http://lacre.dev');
+      return restore;
+    },
+    'SITE_BASE_URL that does not parse': () => {
+      const restore = withoutBrandDomain();
+      vi.stubEnv('SITE_BASE_URL', 'lacre.dev');
+      return restore;
+    },
+    'VERCEL_URL that is not a host': () => {
+      const restore = withoutBrandDomain();
+      vi.stubEnv('SITE_BASE_URL', '');
+      vi.stubEnv('VERCEL_URL', 'https://site.example.test/with/a/path');
+      return restore;
+    },
+  };
+
+  it.each(Object.keys(UNUSABLE))('%s closes the sale, because no link can be built from it', (name) => {
+    open();
+    const restoreBrand = UNUSABLE[name]!();
+    try {
+      // The premise: this really is a base the route would refuse.
+      expect(linkBase(process.env), name).toBeNull();
+      expect(bundleSale().blockers, name).toContain('checkout');
+      expect(bundleSale().open, name).toBe(false);
+    } finally {
+      restoreBrand();
+    }
+  });
+
+  /**
+   * The same rule stated as an implication, over the usable and unusable cases
+   * together: wherever the sale is open, a base exists. Nothing here says which
+   * cases those are.
+   */
+  it('never reports the sale open while linkBase has nothing to return', () => {
+    const cases: [string, () => () => void][] = [
+      ...Object.entries(UNUSABLE),
+      ['the attached domain, as shipped', () => () => {}],
+      ['SITE_BASE_URL on https', () => {
+        const restore = withoutBrandDomain();
+        vi.stubEnv('SITE_BASE_URL', 'https://site.example.test');
+        return restore;
+      }],
+      ['VERCEL_URL alone', () => {
+        const restore = withoutBrandDomain();
+        vi.stubEnv('SITE_BASE_URL', '');
+        vi.stubEnv('VERCEL_URL', 'site.example.test');
+        return restore;
+      }],
+    ];
+    let openedAtLeastOnce = false;
+    for (const [name, setup] of cases) {
+      open();
+      const restoreBrand = setup();
+      try {
+        const sale = bundleSale();
+        if (sale.open) {
+          openedAtLeastOnce = true;
+          expect(linkBase(process.env), `${name}: open with no base`).not.toBeNull();
+        }
+      } finally {
+        restoreBrand();
+        restoreFacts?.();
+        restoreFacts = null;
+        vi.unstubAllEnvs();
+        clearSaleEnv();
+      }
+    }
+    // Otherwise the implication would hold vacuously and prove nothing.
+    expect(openedAtLeastOnce).toBe(true);
   });
 });

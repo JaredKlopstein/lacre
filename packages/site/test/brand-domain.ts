@@ -21,3 +21,19 @@ export function withoutBrandDomain(): () => void {
     brand.domain = before;
   };
 }
+
+/**
+ * Attaches a specific BRAND.domain for a test, and restores whatever was there.
+ *
+ * Used to show what happens when the attached domain is one linkBase() cannot
+ * turn into an origin: a value is present, so any check that only asks "is a
+ * domain set?" is satisfied, while every generated link would be unbuildable.
+ */
+export function withBrandDomain(domain: string | null): () => void {
+  const brand = BRAND as { domain: string | null };
+  const before = brand.domain;
+  brand.domain = domain;
+  return () => {
+    brand.domain = before;
+  };
+}
