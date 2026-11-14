@@ -21,7 +21,7 @@ import { allowContact, clientIp } from '../../../src/auth/rate-limit';
 // The site's auth database (DATABASE_URL), where the rate limit is kept.
 import { DATABASE_URL_ENV, usedTokenDb } from '../../../src/auth/used-tokens';
 import { BRAND } from '../../../src/brand';
-import { FLEET_SIZES, HONEYPOT_FIELD, type ContactOutcome, type FleetSize } from '../../../src/contact';
+import { CONTACT_CODES, FLEET_SIZES, HONEYPOT_FIELD, type ContactOutcome, type FleetSize } from '../../../src/contact';
 
 const FORWARD_ENV = 'CONTACT_FORWARD_URL';
 const MAX_BODY_BYTES = 16 * 1024;
@@ -68,10 +68,14 @@ export async function POST(request: Request): Promise<Response> {
     const requestId = crypto.randomUUID();
     console.error(`contact: request ${requestId}: ${forward.cause}`);
     const headers = { 'x-request-id': requestId };
-    if (form) return redirect('/enterprise?contact=unavailable', headers);
+    // A different outcome from the retryable one below, because this cannot be
+    // fixed by waiting: until the operator sets the forward target, no message
+    // sent from here reaches anyone. The page says so instead of saying "try
+    // again in a few minutes", which was never going to work.
+    if (form) return redirect('/enterprise?contact=not_configured', headers);
     const error: ErrorBody = {
-      code: 'CONTACT_UNAVAILABLE',
-      message: `Enterprise contact is not configured on this server yet. ${NOTHING_SENT}`,
+      code: CONTACT_CODES.notConfigured,
+      message: `This site cannot take messages yet. ${NOTHING_SENT}`,
       retryable: false,
       fix: {
         note: `Reach the ${BRAND.name} team through ${BRAND.repository}. Quote request id ${requestId}.`,
@@ -169,7 +173,7 @@ function limiterDown(form: boolean, cause: string): Response {
   const headers = { 'x-request-id': requestId };
   if (form) return redirect('/enterprise?contact=unavailable', headers);
   const error: ErrorBody = {
-    code: 'CONTACT_UNAVAILABLE',
+    code: CONTACT_CODES.unavailable,
     message: `We couldn't take your message right now. Please try again in a few minutes. ${NOTHING_SENT}`,
     retryable: true,
     fix: { note: `If it keeps failing, reach the ${BRAND.name} team through ${BRAND.repository}. Quote request id ${requestId}.` },
