@@ -111,7 +111,7 @@ async function expectUnavailable(res: Response, status: number, cause: string): 
   const body = await res.text();
   if (status !== 303) {
     const json = JSON.parse(body);
-    expect(json.error.message).toContain('Sign-in is unavailable right now.');
+    expect(json.error.message).toContain('Email sign-in is not configured on this server yet.');
     expect(json.requestId).toBe(requestId);
   }
   const everything = [...res.headers].map(([k, v]) => `${k}: ${v}`).join('\n') + '\n' + body;
