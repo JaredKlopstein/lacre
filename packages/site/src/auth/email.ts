@@ -68,17 +68,22 @@ export function isEmailAddress(email: string): boolean {
 /**
  * The origin every link points at: BRAND.domain, then SITE_BASE_URL, then https plus
  * VERCEL_URL. Null when none is usable. The request's Host header is never consulted.
+ *
+ * `env` is a parameter so that a caller deciding whether links can be built -- the
+ * bundle sale gate -- asks this function instead of testing the same variables
+ * itself. "A value is present" and "a usable origin comes out of it" are different
+ * questions, and only this function answers the second one.
  */
-export function linkBase(): string | null {
+export function linkBase(env: Record<string, string | undefined> = process.env): string | null {
   if (BRAND.domain) return hostOrigin(BRAND.domain);
-  const site = process.env.SITE_BASE_URL?.trim();
+  const site = env.SITE_BASE_URL?.trim();
   if (site) {
     if (!URL.canParse(site)) return null;
     const url = new URL(site);
     const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
     return url.protocol === 'https:' || (url.protocol === 'http:' && local) ? url.origin : null;
   }
-  const vercel = process.env.VERCEL_URL?.trim();
+  const vercel = env.VERCEL_URL?.trim();
   return vercel ? hostOrigin(vercel) : null;
 }
 
