@@ -8,7 +8,7 @@ import EnterprisePage, { generateMetadata } from '../app/enterprise/page.js';
 import { CONTACT_IP_LIMIT, UNKNOWN_CONTACT_IP_BUCKET } from '../src/auth/rate-limit.js';
 import { usedTokenSchema } from '../src/auth/used-tokens.js';
 import { BRAND } from '../src/brand.js';
-import { FLEET_SIZES, HONEYPOT_FIELD } from '../src/contact.js';
+import { CONTACT_CODES, CONTACT_OUTCOMES, FLEET_SIZES, HONEYPOT_FIELD } from '../src/contact.js';
 import { AnnounceOutcome, KeepFields, keepFields, type KeepOptions } from '../src/form-outcome.js';
 import { browser, propsOf } from './page-tree.js';
 
@@ -232,8 +232,11 @@ describe('CONTACT_FORWARD_URL unset', () => {
     const requestId = requestIdLogged(res);
     const body = await res.clone().json();
     expect(body.requestId).toBe(requestId);
-    expect(body.error.code).toBe('CONTACT_UNAVAILABLE');
-    expect(body.error.message).toBe('Enterprise contact is not configured on this server yet. Nothing was sent.');
+    expect(body.error.code).toBe(CONTACT_CODES.notConfigured);
+    expect(body.error.message).toBe('This site cannot take messages yet. Nothing was sent.');
+    // Not retryable, and the code says which of the two 503s this is, so the
+    // waitlist can tell them apart from the answer alone.
+    expect(body.error.retryable).toBe(false);
     expect(body.error.fix.note).toContain(BRAND.repository);
     expect(body.error.fix.note).toContain(String(requestId));
     expect(await answered(res)).not.toContain('CONTACT_FORWARD_URL');
@@ -249,11 +252,11 @@ describe('CONTACT_FORWARD_URL unset', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('redirects a form post back with contact=unavailable and a request id', async () => {
+  it('redirects a form post back with contact=not_configured and a request id', async () => {
     delete process.env.CONTACT_FORWARD_URL;
     const res = await postForm(VALID);
     expect(res.status).toBe(303);
-    expect(res.headers.get('location')).toBe('/enterprise?contact=unavailable');
+    expect(res.headers.get('location')).toBe('/enterprise?contact=not_configured');
     requestIdLogged(res);
     expect(await answered(res)).not.toContain('CONTACT_FORWARD_URL');
     expect(fetchMock).not.toHaveBeenCalled();
@@ -275,7 +278,7 @@ describe('CONTACT_FORWARD_URL unset', () => {
     vi.stubEnv('CONTACT_FORWARD_URL', 'javascript:alert(1)');
     const res = await postForm(VALID);
     expect(res.status).toBe(303);
-    expect(res.headers.get('location')).toBe('/enterprise?contact=unavailable');
+    expect(res.headers.get('location')).toBe('/enterprise?contact=not_configured');
     requestIdLogged(res);
     expect(await answered(res)).not.toContain('CONTACT_FORWARD_URL');
     expect(await exposed(res)).not.toContain('alert');
@@ -454,8 +457,9 @@ describe('enterprise page', () => {
       `<p id="contact-outcome" role="status" tabindex="-1" data-outcome="sent">Thanks. The ${BRAND.name} team has your message`,
     );
     expect(await render('unavailable')).toContain('unavailable right now, so nothing was sent. Try again in a few minutes');
+    expect(await render('not_configured')).toContain('not able to send messages yet, so nothing was sent');
     expect(await render('rate_limited')).toContain('Please try again in a few minutes.');
-    for (const outcome of ['invalid', 'unavailable', 'failed', 'rate_limited']) {
+    for (const outcome of ['invalid', 'not_configured', 'unavailable', 'failed', 'rate_limited']) {
       expect(await render(outcome), outcome).toMatch(/<p id="contact-outcome" role="alert" tabindex="-1"/);
     }
     expect(await render('<script>')).not.toMatch(/role="(status|alert)"/);
@@ -463,7 +467,7 @@ describe('enterprise page', () => {
   });
 
   it('links the public repository when the form cannot take a message, and invents no email (persona review, Marcus 7)', async () => {
-    for (const outcome of ['unavailable', 'failed']) {
+    for (const outcome of ['not_configured', 'unavailable', 'failed']) {
       const html = await render(outcome);
       expect(html, outcome).toContain(`<a href="${BRAND.repository}">the ${BRAND.name} GitHub repository</a>`);
       expect(html, outcome).not.toMatch(/mailto:/);
@@ -474,7 +478,7 @@ describe('enterprise page', () => {
   const FIELD_IDS = ['contact-name', 'contact-email', 'contact-company', 'contact-fleet', 'contact-need'];
 
   it('keeps every typed value through a failed send, and none after a sent one (persona review, Marcus 7)', async () => {
-    for (const [outcome, kept] of [['unavailable', true], ['invalid', true], ['failed', true], ['rate_limited', true], ['sent', false]] as const) {
+    for (const [outcome, kept] of [['not_configured', true], ['unavailable', true], ['invalid', true], ['failed', true], ['rate_limited', true], ['sent', false]] as const) {
       const storage = new Map<string, string>();
       const [first] = propsOf<KeepOptions>(await tree({}), KeepFields);
       expect(first).toEqual({ formId: 'contact-form', fieldIds: FIELD_IDS, storageKey: 'contact-fields', restore: false });
@@ -502,5 +506,66 @@ describe('enterprise page', () => {
     expect(await title({ contact: 'invalid', fields: 'email' })).toBe('Error: check the marked fields · Enterprise');
     expect(await title({ contact: 'sent' })).toBe('Message sent · Enterprise');
     expect(await title({ contact: '<script>' })).toBe('Enterprise');
+  });
+});
+
+/**
+ * The invariant behind the fix, checked against both sides' real output rather
+ * than against a table typed here.
+ *
+ * Before it, the form and the JSON API disagreed about the same event: the JSON
+ * answer for an unset CONTACT_FORWARD_URL said `retryable: false`, and the page
+ * the form post landed on said "Try again in a few minutes". The cause is an
+ * unset variable, so a visitor could retry for as long as they were willing and
+ * never be heard -- and no signup existed anywhere to show they had tried.
+ *
+ * So: for each failure the route can produce, take the outcome a form post is
+ * redirected to and the retryable flag the JSON answer carries, from the route
+ * itself, then render the page at that outcome. The page may offer a retry only
+ * where the route says retrying can work.
+ */
+describe('the page offers a retry only where the route says one can work', () => {
+  const render = async (contact: string) =>
+    renderToStaticMarkup(await EnterprisePage({ searchParams: Promise.resolve({ contact }) }))
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ');
+
+  /** One scenario, driven both ways: what a form post lands on, and what the JSON answer claims. */
+  async function bothWays(): Promise<{ outcome: string; retryable: boolean }> {
+    const body = await (await postJson(VALID)).json();
+    const location = (await postForm(VALID)).headers.get('location');
+    const outcome = new URL(location!, 'http://site.test').searchParams.get('contact');
+    expect(CONTACT_OUTCOMES, location!).toContain(outcome);
+    return { outcome: outcome!, retryable: body.error.retryable === true };
+  }
+
+  const SCENARIOS: Record<string, () => void | Promise<void>> = {
+    'the forward target is unset': () => void vi.stubEnv('CONTACT_FORWARD_URL', ''),
+    'the rate limiter cannot count': () => void vi.stubEnv('DATABASE_URL', ''),
+    'the forward target rejects': () => void fetchMock.mockResolvedValue(new Response('no', { status: 400 })),
+  };
+
+  it.each(Object.keys(SCENARIOS))('%s', async (name) => {
+    await SCENARIOS[name]!();
+    const { outcome, retryable } = await bothWays();
+    const shown = await render(outcome);
+    expect(/try again|retry/i.test(shown), `${outcome} (retryable=${retryable}): ${shown}`).toBe(retryable);
+    if (!retryable) {
+      // Something has to be offered instead of a retry, or the visitor is simply stuck.
+      expect(shown).toContain('will not change that');
+      expect(shown).toContain(`the ${BRAND.name} GitHub repository`);
+    }
+  });
+
+  it('covers both of the route\'s 503 reasons, and they are not the same outcome', async () => {
+    vi.stubEnv('CONTACT_FORWARD_URL', '');
+    const unconfigured = await bothWays();
+    vi.stubEnv('CONTACT_FORWARD_URL', FORWARD_URL);
+    vi.stubEnv('DATABASE_URL', '');
+    const limiter = await bothWays();
+    expect(unconfigured.outcome).not.toBe(limiter.outcome);
+    expect(unconfigured.retryable).toBe(false);
+    expect(limiter.retryable).toBe(true);
+    expect(Object.values(CONTACT_CODES)).toHaveLength(2);
   });
 });
