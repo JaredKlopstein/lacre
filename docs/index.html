@@ -7,7 +7,7 @@
      send real headers; these meta equivalents are what a browser honours while
      GitHub Pages serves the page. `frame-ancestors` is ignored in a meta CSP, so
      the clickjacking guard below backs it up. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <script>
   /* Clickjacking guard: this page is a demo you are meant to interact with, and
@@ -21,10 +21,42 @@
 <!-- No canonical link and no link to a main site: no Lacre site deployment is
      serving yet, so this page is its own canonical. Add both back, together,
      once a canonical host is chosen and serving; test/site.test.ts pins this. -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap" rel="stylesheet">
+<!-- IBM Plex, served from this directory. Nothing on this page requests a
+     third party: a visitor's IP reaches no host but the one serving the page.
+     The files are the latin subsets Google Fonts serves, fetched once and
+     committed; the licence they are used under is fonts/OFL.txt. The app at
+     lacre.dev self-hosts the same families through next/font. -->
 <style>
+  @font-face{
+    font-family:'IBM Plex Serif';font-style:normal;font-weight:500;font-display:swap;
+    src:url('fonts/ibm-plex-serif-500.woff2') format('woff2');
+    unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face{
+    font-family:'IBM Plex Serif';font-style:normal;font-weight:600;font-display:swap;
+    src:url('fonts/ibm-plex-serif-600.woff2') format('woff2');
+    unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face{
+    font-family:'IBM Plex Sans';font-style:normal;font-weight:400 600;font-display:swap;
+    src:url('fonts/ibm-plex-sans-400-600.woff2') format('woff2');
+    unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face{
+    font-family:'IBM Plex Mono';font-style:normal;font-weight:400;font-display:optional;
+    src:url('fonts/ibm-plex-mono-400.woff2') format('woff2');
+    unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face{
+    font-family:'IBM Plex Mono';font-style:normal;font-weight:500;font-display:optional;
+    src:url('fonts/ibm-plex-mono-500.woff2') format('woff2');
+    unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face{
+    font-family:'IBM Plex Mono';font-style:normal;font-weight:600;font-display:optional;
+    src:url('fonts/ibm-plex-mono-600.woff2') format('woff2');
+    unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
   :root{
     --ink:#141a22; --ink-2:#2c3542; --dim:#6c6b64;
     --paper:#e8e8e4; --card:#f6f6f3; --rule:#ccccc4;
