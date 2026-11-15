@@ -36,6 +36,15 @@ export interface LegalFacts {
   readonly bundleRetention: string | null;
   /** The mailbox provider whose inbox receives chain files by email, named in the Privacy Policy. */
   readonly mailboxProvider: string | null;
+  /**
+   * Whoever receives a forwarded contact message, if that is not the mailbox
+   * provider above: the service CONTACT_FORWARD_URL points at. Optional, because
+   * a deployment that cannot send has nobody to name -- but a deployment that
+   * can and leaves this null is processing people's details through a company
+   * the policy does not disclose. test/privacy-contact.test.ts fails in exactly
+   * that state rather than letting it ship quietly.
+   */
+  readonly contactProcessor: string | null;
 }
 
 /**
@@ -60,9 +69,18 @@ export const LEGAL: LegalFacts = {
   contactRetention: '90 days',
   bundleRetention: '90 days',
   mailboxProvider: 'Microsoft 365 (Exchange Online)',
+  // Null while CONTACT_FORWARD_URL is unset, which is production today: no
+  // message is forwarded, so there is no recipient to disclose. Whoever it is
+  // set to has to be named here in the same change.
+  contactProcessor: null,
 };
 
-/** Facts the documents cannot take effect without. The postal address is optional. */
+/**
+ * Facts the documents cannot take effect without. The postal address is
+ * optional, and so is contactProcessor: there is nobody to name until the owner
+ * points CONTACT_FORWARD_URL somewhere, and a required fact left null would put
+ * a bracketed placeholder on a page that is in effect.
+ */
 export const REQUIRED_FACTS = [
   'entityName',
   'entityJurisdiction',
@@ -104,4 +122,5 @@ const PLACEHOLDERS: Record<keyof LegalFacts, string> = {
   contactRetention: 'contact message retention: owner to supply',
   bundleRetention: 'chain file and bundle retention: owner to supply',
   mailboxProvider: 'mailbox provider for chain files: owner to supply',
+  contactProcessor: 'service that receives contact messages: owner to supply',
 };

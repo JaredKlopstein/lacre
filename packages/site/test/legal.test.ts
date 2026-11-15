@@ -34,6 +34,7 @@ const FILLED: LegalFacts = {
   contactRetention: '12 months',
   bundleRetention: '12 months',
   mailboxProvider: 'Example Mailbox',
+  contactProcessor: null,
 };
 
 const terms = () => renderToStaticMarkup(TermsPage());
@@ -57,6 +58,7 @@ const SUPPLIED: LegalFacts = {
   contactRetention: '90 days',
   bundleRetention: '90 days',
   mailboxProvider: 'Microsoft 365 (Exchange Online)',
+  contactProcessor: null,
 };
 
 describe('owner-supplied facts', () => {

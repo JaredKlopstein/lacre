@@ -25,6 +25,7 @@ export const TEST_FACTS: LegalFacts = {
   contactRetention: 'a test period',
   bundleRetention: 'a test period',
   mailboxProvider: 'a test mailbox',
+  contactProcessor: 'a test forwarding service',
 };
 
 /** Fills LEGAL with TEST_FACTS. Returns the function that puts the nulls back. */
