@@ -28,7 +28,10 @@ export interface LegalFacts {
   readonly refundWindowDays: number | null;
   /** Governing law and venue, e.g. "the laws of the State of Texas". */
   readonly governingLaw: string | null;
-  /** The email provider that delivers sign-in links, named in the Privacy Policy. */
+  /**
+   * The email provider that delivers sign-in links, named in the Privacy Policy.
+   * It carries contact-form messages too; see contactProcessor.
+   */
   readonly emailProvider: string | null;
   /** How long contact-form messages are kept, e.g. "12 months". */
   readonly contactRetention: string | null;
@@ -37,12 +40,15 @@ export interface LegalFacts {
   /** The mailbox provider whose inbox receives chain files by email, named in the Privacy Policy. */
   readonly mailboxProvider: string | null;
   /**
-   * Whoever receives a forwarded contact message, if that is not the mailbox
-   * provider above: the service CONTACT_FORWARD_URL points at. Optional, because
-   * a deployment that cannot send has nobody to name -- but a deployment that
-   * can and leaves this null is processing people's details through a company
-   * the policy does not disclose. test/privacy-contact.test.ts fails in exactly
-   * that state rather than letting it ship quietly.
+   * Whoever carries a contact-form message on its way to the inbox: the provider
+   * the EMAIL_API_* variables point at. Optional, because a deployment that
+   * cannot send has nobody to name -- but a deployment that can and leaves this
+   * null is processing people's details through a company the policy does not
+   * disclose. test/privacy-contact.test.ts fails in exactly that state rather
+   * than letting it ship quietly.
+   *
+   * When it is the same company as emailProvider, the Privacy Policy widens that
+   * one entry rather than listing the name twice.
    */
   readonly contactProcessor: string | null;
 }
@@ -69,17 +75,18 @@ export const LEGAL: LegalFacts = {
   contactRetention: '90 days',
   bundleRetention: '90 days',
   mailboxProvider: 'Microsoft 365 (Exchange Online)',
-  // Null while CONTACT_FORWARD_URL is unset, which is production today: no
-  // message is forwarded, so there is no recipient to disclose. Whoever it is
-  // set to has to be named here in the same change.
-  contactProcessor: null,
+  // The contact form sends its submission as email through the same provider as
+  // the sign-in link, so the company that carries it is emailProvider. Whoever
+  // it is set to has to be named here in the same change; it is set here because
+  // this is that change.
+  contactProcessor: 'Resend',
 };
 
 /**
  * Facts the documents cannot take effect without. The postal address is
- * optional, and so is contactProcessor: there is nobody to name until the owner
- * points CONTACT_FORWARD_URL somewhere, and a required fact left null would put
- * a bracketed placeholder on a page that is in effect.
+ * optional, and so is contactProcessor: a deployment that cannot send has
+ * nobody to name, and a required fact left null would put a bracketed
+ * placeholder on a page that is in effect.
  */
 export const REQUIRED_FACTS = [
   'entityName',

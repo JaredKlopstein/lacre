@@ -9,13 +9,16 @@ import { CONTACT_IP_LIMIT, UNKNOWN_CONTACT_IP_BUCKET } from '../src/auth/rate-li
 import { usedTokenSchema } from '../src/auth/used-tokens.js';
 import { BRAND } from '../src/brand.js';
 import { CONTACT_CODES, CONTACT_OUTCOMES, FLEET_SIZES, HONEYPOT_FIELD } from '../src/contact.js';
+import { LEGAL } from '../src/legal.js';
 import { AnnounceOutcome, KeepFields, keepFields, type KeepOptions } from '../src/form-outcome.js';
 import { browser, propsOf } from './page-tree.js';
 
 /**
- * The enterprise contact route forwards one submission to CONTACT_FORWARD_URL.
- * fetch is mocked throughout: nothing here touches the network. The rate limit's
- * Postgres is PGlite, in process, behind the Neon driver's drizzle().
+ * The enterprise contact route emails one submission to LEGAL.contactEmail
+ * through the provider the EMAIL_API_* variables configure. fetch is mocked
+ * throughout: nothing here touches the network, and no value below is a real
+ * credential. The rate limit's Postgres is PGlite, in process, behind the Neon
+ * driver's drizzle().
  */
 
 const pgHolder = vi.hoisted(() => ({ db: null as unknown }));
@@ -23,7 +26,12 @@ vi.mock('drizzle-orm/neon-serverless', () => ({ drizzle: vi.fn(() => pgHolder.db
 
 const RATE_MIGRATION = new URL('../migrations/0001_magic_link_rate.sql', import.meta.url);
 const DATABASE_URL = ['postgresql:', '', 'test-user:test-password@db.site.test', 'site'].join('/');
-const FORWARD_URL = 'https://forward.example.test/enterprise-leads';
+const EMAIL_API_URL = 'https://provider.example.test/emails';
+/** Not a credential: a fixture, checked below for never leaving the process. */
+const EMAIL_API_KEY = 'fixture-not-a-real-key-0000';
+const EMAIL_FROM = 'site@site.test';
+/** The three variables a send needs, as the route reads them. */
+const EMAIL_ENV = { EMAIL_API_URL, EMAIL_API_KEY, EMAIL_FROM } as const;
 const VALID = {
   name: 'Ada Lovelace',
   email: 'ada@example.com',
@@ -55,7 +63,7 @@ beforeEach(async () => {
       logged.push(args.map(String).join(' '));
     });
   }
-  vi.stubEnv('CONTACT_FORWARD_URL', FORWARD_URL);
+  for (const [name, value] of Object.entries(EMAIL_ENV)) vi.stubEnv(name, value);
   vi.stubEnv('DATABASE_URL', DATABASE_URL);
 });
 
@@ -83,25 +91,69 @@ const postForm = (fields: Record<string, string>, headers: Record<string, string
     }),
   );
 
-/** The response body and every log line, for checking the forward URL leaks nowhere. */
+/** The response body, its headers and every log line: everywhere a value could leak. */
 async function exposed(res: Response): Promise<string> {
   return [await res.clone().text(), JSON.stringify([...res.headers]), ...logged].join('\n');
 }
 
+/** The body the route handed the provider, parsed. */
+function sendBody(call = 0): { from: string; to: string; subject: string; text: string } {
+  const [, init] = fetchMock.mock.calls[call] as [string, RequestInit];
+  return JSON.parse(String(init.body));
+}
+
 describe('valid submission', () => {
-  it('forwards the fields as JSON to CONTACT_FORWARD_URL and answers 200', async () => {
+  it('emails the fields to the contact address through the provider and answers 200', async () => {
     const res = await postJson(VALID);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(FORWARD_URL);
+    expect(url).toBe(EMAIL_API_URL);
     expect(init.method).toBe('POST');
-    const sent = JSON.parse(String(init.body));
-    expect(sent).toMatchObject(VALID);
+    // The key travels in the Authorization header, which is where the provider
+    // documents it and the only place it may appear.
+    expect(new Headers(init.headers)).toEqual(
+      new Headers({ 'content-type': 'application/json', authorization: `Bearer ${EMAIL_API_KEY}` }),
+    );
+
+    const sent = sendBody();
+    expect(sent.from).toBe(EMAIL_FROM);
+    // The address the Privacy Policy publishes, not one invented here.
+    expect(sent.to).toBe(LEGAL.contactEmail);
     expect(sent).not.toHaveProperty(HONEYPOT_FIELD);
-    expect(typeof sent.submittedAt).toBe('string');
+  });
+
+  it('carries all five fields and the timestamp in the message', async () => {
+    await postJson(VALID);
+    const { subject, text } = sendBody();
+    // Findable in a mailbox list from the subject alone: what it is, who from, how big.
+    expect(subject).toContain(BRAND.name);
+    expect(subject).toContain(VALID.company);
+    expect(subject).toContain(VALID.fleetSize);
+    for (const value of Object.values(VALID)) expect(text, value).toContain(value);
+    // The submitted-at line is an ISO instant, and the message says where to reply.
+    expect(text).toMatch(/^Submitted: \d{4}-\d{2}-\d{2}T[\d:.]+Z$/m);
+    expect(text).toContain(`Reply to ${VALID.email}.`);
+  });
+
+  it('keeps a typed newline out of the subject, so no header can be injected', async () => {
+    await postJson({ ...VALID, company: 'Analytical\r\nBcc: spy@example.test\nEngines' });
+    const { subject, text } = sendBody();
+    expect(subject).not.toMatch(/[\r\n]/);
+    expect(subject).toContain('Analytical Bcc: spy@example.test Engines');
+    // The body is a body: it may hold what was typed, newlines and all.
+    expect(text).toContain('Bcc: spy@example.test');
+  });
+
+  it('shortens an over-long company in the subject but keeps it whole in the body', async () => {
+    const company = 'C'.repeat(200);
+    await postJson({ ...VALID, company });
+    const { subject, text } = sendBody();
+    expect(subject.length).toBeLessThan(200);
+    expect(subject).toContain('\u2026');
+    expect(text).toContain(company);
   });
 
   it('accepts every fleet size the form offers', async () => {
@@ -118,8 +170,27 @@ describe('valid submission', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('never echoes or logs the forward URL', async () => {
-    expect(await exposed(await postJson(VALID))).not.toContain('forward.example.test');
+  /**
+   * The route now holds a credential where it held none: EMAIL_API_KEY. It
+   * belongs in exactly one place, the Authorization header of the send, and
+   * nowhere a visitor or a log reader can see it.
+   */
+  it('never puts the provider key in a response, a header or a log line', async () => {
+    const responses = [
+      await postJson(VALID),
+      await postJson({ email: 'nope' }),
+      await postJson({ ...VALID, [HONEYPOT_FIELD]: 'filled' }),
+      await postForm(VALID),
+    ];
+    fetchMock.mockRejectedValueOnce(new TypeError(`fetch failed: ${EMAIL_API_URL} key=${EMAIL_API_KEY}`));
+    responses.push(await postJson(VALID));
+    fetchMock.mockResolvedValueOnce(new Response(`rejected key ${EMAIL_API_KEY}`, { status: 401 }));
+    responses.push(await postJson(VALID));
+    for (const res of responses) {
+      expect(await exposed(res)).not.toContain(EMAIL_API_KEY);
+    }
+    // And the send did carry it, so the assertion above is not vacuous.
+    expect(JSON.stringify(fetchMock.mock.calls)).toContain(EMAIL_API_KEY);
   });
 });
 
@@ -213,23 +284,23 @@ describe('honeypot', () => {
   });
 });
 
-describe('CONTACT_FORWARD_URL unset', () => {
+describe('the email provider is not configured', () => {
   /** The response body and headers only, without the log. */
   const answered = async (res: Response) => [await res.clone().text(), JSON.stringify([...res.headers])].join('\n');
 
-  /** The request id the response carries, after checking the log names the variable under it. */
-  const requestIdLogged = (res: Response) => {
+  /** The request id the response carries, after checking the log names `blamed` under it. */
+  const requestIdLogged = (res: Response, blamed: string) => {
     const requestId = res.headers.get('x-request-id');
     expect(requestId).toBeTruthy();
-    expect(logged.some((line) => line.includes(String(requestId)) && line.includes('CONTACT_FORWARD_URL'))).toBe(true);
+    expect(logged.some((line) => line.includes(String(requestId)) && line.includes(blamed))).toBe(true);
     return requestId;
   };
 
-  it('returns a generic 503 with a request id and forwards nothing', async () => {
-    vi.stubEnv('CONTACT_FORWARD_URL', '');
+  it('returns a generic 503 with a request id and sends nothing', async () => {
+    vi.stubEnv('EMAIL_API_KEY', '');
     const res = await postJson(VALID);
     expect(res.status).toBe(503);
-    const requestId = requestIdLogged(res);
+    const requestId = requestIdLogged(res, 'EMAIL_API_KEY');
     const body = await res.clone().json();
     expect(body.requestId).toBe(requestId);
     expect(body.error.code).toBe(CONTACT_CODES.notConfigured);
@@ -239,49 +310,110 @@ describe('CONTACT_FORWARD_URL unset', () => {
     expect(body.error.retryable).toBe(false);
     expect(body.error.fix.note).toContain(BRAND.repository);
     expect(body.error.fix.note).toContain(String(requestId));
-    expect(await answered(res)).not.toContain('CONTACT_FORWARD_URL');
+    // The answer names no variable, and above all no value.
+    for (const name of Object.keys(EMAIL_ENV)) expect(await answered(res)).not.toContain(name);
+    expect(await exposed(res)).not.toContain(EMAIL_API_KEY);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('treats a missing variable the same as an empty one', async () => {
-    delete process.env.CONTACT_FORWARD_URL;
+  /**
+   * Any one of the three missing is enough, in both directions: a key set with
+   * the endpoint missing is as unsendable as the reverse. Each is driven on its
+   * own, and the log names the ones that are actually missing.
+   */
+  it.each(Object.keys(EMAIL_ENV))('refuses when only %s is unset, and blames just that one', async (name) => {
+    vi.stubEnv(name, '');
     const res = await postJson(VALID);
     expect(res.status).toBe(503);
-    requestIdLogged(res);
-    expect(await answered(res)).not.toContain('CONTACT_FORWARD_URL');
+    expect((await res.clone().json()).error.code).toBe(CONTACT_CODES.notConfigured);
+    requestIdLogged(res, name);
+    for (const other of Object.keys(EMAIL_ENV)) {
+      if (other !== name) expect(logged.join('\n'), other).not.toContain(other);
+    }
+    expect(await answered(res)).not.toContain(name);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each(Object.keys(EMAIL_ENV))('treats %s missing the same as empty', async (name) => {
+    delete process.env[name];
+    const res = await postJson(VALID);
+    expect(res.status).toBe(503);
+    requestIdLogged(res, name);
+    expect(await answered(res)).not.toContain(name);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses when all three are unset and names all three', async () => {
+    for (const name of Object.keys(EMAIL_ENV)) vi.stubEnv(name, '');
+    const res = await postJson(VALID);
+    expect(res.status).toBe(503);
+    const requestId = requestIdLogged(res, 'EMAIL_API_URL');
+    for (const name of Object.keys(EMAIL_ENV)) {
+      expect(logged.some((line) => line.includes(String(requestId)) && line.includes(name)), name).toBe(true);
+    }
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('redirects a form post back with contact=not_configured and a request id', async () => {
-    delete process.env.CONTACT_FORWARD_URL;
+    delete process.env.EMAIL_API_URL;
     const res = await postForm(VALID);
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toBe('/enterprise?contact=not_configured');
-    requestIdLogged(res);
-    expect(await answered(res)).not.toContain('CONTACT_FORWARD_URL');
+    requestIdLogged(res, 'EMAIL_API_URL');
+    expect(await answered(res)).not.toContain('EMAIL_API_URL');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('treats a value that is not an http(s) URL as unset, without logging it', async () => {
-    vi.stubEnv('CONTACT_FORWARD_URL', 'ftp://forward.example.test/leads');
-    const res = await postJson(VALID);
-    expect(res.status).toBe(503);
-    expect(fetchMock).not.toHaveBeenCalled();
-    const requestId = requestIdLogged(res);
-    expect(logged.join('\n')).toContain('not an http(s) URL');
-    expect((await res.clone().json()).requestId).toBe(requestId);
-    expect(await answered(res)).not.toContain('CONTACT_FORWARD_URL');
-    expect(await exposed(res)).not.toContain('forward.example.test');
-  });
+  it.each(['http://provider.example.test/emails', 'ftp://provider.example.test/emails', 'javascript:alert(1)', 'provider.example.test/emails'])(
+    'treats the endpoint %j as unset, without logging the value',
+    async (value) => {
+      vi.stubEnv('EMAIL_API_URL', value);
+      const res = await postJson(VALID);
+      expect(res.status).toBe(503);
+      expect(fetchMock).not.toHaveBeenCalled();
+      const requestId = requestIdLogged(res, 'EMAIL_API_URL');
+      // The log says what is wrong with it, by variable name only.
+      expect(logged.join('\n')).toContain('is not an https URL');
+      expect((await res.clone().json()).requestId).toBe(requestId);
+      expect(await answered(res)).not.toContain('EMAIL_API_URL');
+      expect(await exposed(res)).not.toContain(value);
+    },
+  );
 
-  it('answers a form post the same way when the value is not an http(s) URL', async () => {
-    vi.stubEnv('CONTACT_FORWARD_URL', 'javascript:alert(1)');
+  it('answers a form post the same way when the endpoint is not https', async () => {
+    vi.stubEnv('EMAIL_API_URL', 'javascript:alert(1)');
     const res = await postForm(VALID);
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toBe('/enterprise?contact=not_configured');
-    requestIdLogged(res);
-    expect(await answered(res)).not.toContain('CONTACT_FORWARD_URL');
+    requestIdLogged(res, 'EMAIL_API_URL');
+    expect(await answered(res)).not.toContain('EMAIL_API_URL');
     expect(await exposed(res)).not.toContain('alert');
+  });
+
+  /**
+   * The destination is a fact in src/legal.ts, not a variable, and it is typed
+   * `string | null`. A deployment that has not published a contact address has
+   * nowhere to send a submission, which is the same dead end as an unset
+   * variable and must get the same not-retryable answer rather than a 500.
+   */
+  it('refuses the same way when there is no contact address to send to', async () => {
+    const facts = LEGAL as { -readonly [K in keyof typeof LEGAL]: (typeof LEGAL)[K] };
+    const before = facts.contactEmail;
+    facts.contactEmail = null;
+    try {
+      const res = await postJson(VALID);
+      expect(res.status).toBe(503);
+      const body = await res.clone().json();
+      expect(body.error.code).toBe(CONTACT_CODES.notConfigured);
+      expect(body.error.retryable).toBe(false);
+      requestIdLogged(res, 'contactEmail');
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      const formRes = await postForm(VALID);
+      expect(formRes.headers.get('location')).toBe('/enterprise?contact=not_configured');
+    } finally {
+      facts.contactEmail = before;
+    }
   });
 });
 
@@ -384,23 +516,24 @@ describe('rate limit', () => {
   });
 });
 
-describe('forward failure', () => {
-  it('returns 502 when the target rejects, without echoing or logging the URL', async () => {
-    fetchMock.mockResolvedValueOnce(new Response(`bad request to ${FORWARD_URL}`, { status: 400 }));
+describe('send failure', () => {
+  it('returns 502 when the provider rejects, without echoing or logging the endpoint', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(`bad request to ${EMAIL_API_URL}`, { status: 400 }));
     const res = await postJson(VALID);
     expect(res.status).toBe(502);
     const body = await res.clone().json();
     expect(body.error).toMatchObject({ code: 'CONTACT_FORWARD_FAILED', retryable: true });
     expect(logged.join('\n')).toContain('HTTP 400');
-    expect(await exposed(res)).not.toContain('forward.example.test');
+    expect(logged.join('\n')).toContain('contact:');
+    expect(await exposed(res)).not.toContain('provider.example.test');
   });
 
-  it('returns 502 when fetch throws, even if the error message carries the URL', async () => {
-    fetchMock.mockRejectedValueOnce(new TypeError(`fetch failed: ${FORWARD_URL}`));
+  it('returns 502 when fetch throws, even if the error message carries the endpoint', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError(`fetch failed: ${EMAIL_API_URL}`));
     const res = await postJson(VALID);
     expect(res.status).toBe(502);
     expect(logged.join('\n')).toContain('TypeError');
-    expect(await exposed(res)).not.toContain('forward.example.test');
+    expect(await exposed(res)).not.toContain('provider.example.test');
   });
 
   it('redirects a form post back with contact=failed', async () => {
@@ -514,7 +647,7 @@ describe('enterprise page', () => {
  * than against a table typed here.
  *
  * Before it, the form and the JSON API disagreed about the same event: the JSON
- * answer for an unset CONTACT_FORWARD_URL said `retryable: false`, and the page
+ * answer for an unconfigured sender said `retryable: false`, and the page
  * the form post landed on said "Try again in a few minutes". The cause is an
  * unset variable, so a visitor could retry for as long as they were willing and
  * never be heard -- and no signup existed anywhere to show they had tried.
@@ -540,9 +673,10 @@ describe('the page offers a retry only where the route says one can work', () =>
   }
 
   const SCENARIOS: Record<string, () => void | Promise<void>> = {
-    'the forward target is unset': () => void vi.stubEnv('CONTACT_FORWARD_URL', ''),
+    'the email provider is not configured': () => void vi.stubEnv('EMAIL_API_KEY', ''),
+    'the send endpoint is not an https URL': () => void vi.stubEnv('EMAIL_API_URL', 'http://provider.example.test/emails'),
     'the rate limiter cannot count': () => void vi.stubEnv('DATABASE_URL', ''),
-    'the forward target rejects': () => void fetchMock.mockResolvedValue(new Response('no', { status: 400 })),
+    'the provider rejects the send': () => void fetchMock.mockResolvedValue(new Response('no', { status: 400 })),
   };
 
   it.each(Object.keys(SCENARIOS))('%s', async (name) => {
@@ -558,9 +692,9 @@ describe('the page offers a retry only where the route says one can work', () =>
   });
 
   it('covers both of the route\'s 503 reasons, and they are not the same outcome', async () => {
-    vi.stubEnv('CONTACT_FORWARD_URL', '');
+    vi.stubEnv('EMAIL_API_KEY', '');
     const unconfigured = await bothWays();
-    vi.stubEnv('CONTACT_FORWARD_URL', FORWARD_URL);
+    vi.stubEnv('EMAIL_API_KEY', EMAIL_API_KEY);
     vi.stubEnv('DATABASE_URL', '');
     const limiter = await bothWays();
     expect(unconfigured.outcome).not.toBe(limiter.outcome);

@@ -44,6 +44,12 @@ const privacy = () => renderToStaticMarkup(PrivacyPage());
  * The facts the owner supplied (2026-11-10). The mailbox provider hosts the inbox
  * the owner named for chain files (contact@frontierforge.tech), as the owner
  * confirmed.
+ *
+ * contactProcessor is the one entry here the owner did not name separately: the
+ * contact route sends its submissions through the same provider as the sign-in
+ * link, so whoever carries them is emailProvider. It is spelled out rather than
+ * referenced so this table stays a plain list of values, and the assertion below
+ * pins the two together.
  */
 const SUPPLIED: LegalFacts = {
   entityName: 'Ascella Studios LLC',
@@ -58,7 +64,7 @@ const SUPPLIED: LegalFacts = {
   contactRetention: '90 days',
   bundleRetention: '90 days',
   mailboxProvider: 'Microsoft 365 (Exchange Online)',
-  contactProcessor: null,
+  contactProcessor: 'Resend',
 };
 
 describe('owner-supplied facts', () => {
@@ -67,6 +73,9 @@ describe('owner-supplied facts', () => {
       expect(value, key).toBe(SUPPLIED[key as keyof LegalFacts]);
     }
     expect(missingFacts()).toEqual([]);
+    // Not a second company: the sender of sign-in email is the carrier of
+    // contact messages, because the route sends through it.
+    expect(SUPPLIED.contactProcessor).toBe(SUPPLIED.emailProvider);
   });
 
   it('render as a bracketed placeholder until set, then as the value', () => {

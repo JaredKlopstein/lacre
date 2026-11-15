@@ -14,16 +14,20 @@ export const metadata: Metadata = {
 // the billing database). Facts only the owner can supply come from src/legal.ts and
 // render as bracketed placeholders until set.
 export default function PrivacyPage() {
-  // Whether this deployment can send a message at all. While it cannot -- which
-  // is production today, with CONTACT_FORWARD_URL unset -- the clause below
-  // described a flow that does not occur: nothing is forwarded to any inbox and
-  // nothing is kept, and both forms tell the visitor so.
+  // Whether this deployment can send a message at all: whether the email
+  // provider the contact route sends through is configured. While it is not,
+  // the clause below would describe a flow that does not occur -- nothing
+  // reaches any inbox and nothing is kept -- and both forms tell the visitor so.
   const forwarding = contactForwarding();
-  // Setting CONTACT_FORWARD_URL without naming who receives the messages means
-  // this page is describing a disclosure it does not make. That must be visible
-  // on the page rather than discovered later, so it says so where the effective
+  // Configuring the provider without naming who carries the messages means this
+  // page is describing a disclosure it does not make. That must be visible on
+  // the page rather than discovered later, so it says so where the effective
   // date is, and test/privacy-contact.test.ts holds it there.
   const undisclosed = forwarding && LEGAL.contactProcessor === null;
+  // The contact form sends through the same provider as the sign-in link, so
+  // naming it twice in the processor list would read as two companies. One
+  // entry, widened to cover both, says what that company actually sees.
+  const oneProvider = forwarding && LEGAL.contactProcessor !== null && LEGAL.contactProcessor === LEGAL.emailProvider;
   return (
     <article>
       <h1>Privacy</h1>
@@ -112,9 +116,17 @@ export default function PrivacyPage() {
         <li>Vercel, which hosts the website.</li>
         <li>Neon, which hosts our database.</li>
         <li>Stripe, which takes payments.</li>
-        <li>{fact('emailProvider')}, which delivers sign-in emails.</li>
-        <li>{fact('mailboxProvider')}, which hosts the inbox that receives chain files for evidence bundles.</li>
-        {forwarding && LEGAL.contactProcessor && (
+        <li>
+          {fact('emailProvider')}, which delivers sign-in emails
+          {oneProvider ? ' and carries the messages sent through the contact form and the waitlist' : ''}.
+        </li>
+        {/* Contact messages land in that same inbox once they can be sent, so the
+            entry says so rather than leaving a reader to assume it only sees chain files. */}
+        <li>
+          {fact('mailboxProvider')}, which hosts the inbox that receives chain files for evidence bundles
+          {forwarding ? ' and the messages sent through the contact form and the waitlist' : ''}.
+        </li>
+        {forwarding && LEGAL.contactProcessor && !oneProvider && (
           <li>{fact('contactProcessor')}, which receives messages sent through the contact form and the waitlist.</li>
         )}
       </ul>
