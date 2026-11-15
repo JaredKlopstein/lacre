@@ -23,11 +23,13 @@ import {
 } from '../app/pricing/waitlist-form.js';
 import { usedTokenSchema } from '../src/auth/used-tokens.js';
 import { CONTACT_CODES, CONTACT_PATH, FLEET_SIZES, HONEYPOT_FIELD } from '../src/contact.js';
+import { LEGAL } from '../src/legal.js';
 
 /**
  * The Cloud waitlist form posts to the existing contact route with that route's
- * keys. The route runs for real here with the forward mocked; the rate limit's
- * Postgres is PGlite, in process, as in contact.test.ts.
+ * keys. The route runs for real here with the email send mocked; the rate
+ * limit's Postgres is PGlite, in process, as in contact.test.ts. No value below
+ * is a real credential.
  */
 
 const pgHolder = vi.hoisted(() => ({ db: null as unknown }));
@@ -35,7 +37,12 @@ vi.mock('drizzle-orm/neon-serverless', () => ({ drizzle: vi.fn(() => pgHolder.db
 
 const RATE_MIGRATION = new URL('../migrations/0001_magic_link_rate.sql', import.meta.url);
 const DATABASE_URL = ['postgresql:', '', 'test-user:test-password@db.site.test', 'site'].join('/');
-const FORWARD_URL = 'https://forward.example.test/waitlist';
+/** The three variables the route's send needs. Fixtures, not credentials. */
+const EMAIL_ENV = {
+  EMAIL_API_URL: 'https://provider.example.test/emails',
+  EMAIL_API_KEY: 'fixture-not-a-real-key-0000',
+  EMAIL_FROM: 'site@site.test',
+} as const;
 
 let pg: PGlite;
 let fetchMock: Mock;
@@ -54,7 +61,7 @@ beforeEach(async () => {
   fetchMock = vi.fn(async () => new Response('ok', { status: 200 }));
   vi.stubGlobal('fetch', fetchMock);
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  vi.stubEnv('CONTACT_FORWARD_URL', FORWARD_URL);
+  for (const [name, value] of Object.entries(EMAIL_ENV)) vi.stubEnv(name, value);
   vi.stubEnv('DATABASE_URL', DATABASE_URL);
 });
 
@@ -176,7 +183,7 @@ describe('waitlist result, announced (persona review: Sam 2, Marcus 9)', () => {
 });
 
 describe('waitlist body against the contact route', () => {
-  it('passes validation and forwards once', async () => {
+  it('passes validation and is emailed once, with every value it typed', async () => {
     const body = filled({
       name: 'Ada Lovelace',
       email: 'ada@example.com',
@@ -189,8 +196,11 @@ describe('waitlist body against the contact route', () => {
     expect(waitlistResult(res.status, undefined)).toBe('sent');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(FORWARD_URL);
-    expect(JSON.parse(String(init.body))).toMatchObject(body);
+    expect(url).toBe(EMAIL_ENV.EMAIL_API_URL);
+    const sent = JSON.parse(String(init.body));
+    // One route, one destination: the address the Privacy Policy publishes.
+    expect(sent.to).toBe(LEGAL.contactEmail);
+    for (const [key, value] of Object.entries(body)) expect(sent.text, key).toContain(String(value));
   });
 
   it('passes at every maximum length', async () => {
@@ -244,7 +254,7 @@ describe('waitlist result', () => {
  * The waitlist reads the route's answer, so the sentence it shows has to come
  * from what the route actually returns for the state the site is in.
  *
- * In production CONTACT_FORWARD_URL is unset, so this is the only answer the
+ * Until the owner configures the email provider, this is the only answer the
  * waitlist receives: before the fix it said "The waitlist is unavailable right
  * now... Try again in a few minutes", which no amount of waiting would have
  * made true. The route is run for real here and its answer is fed to the same
@@ -252,7 +262,7 @@ describe('waitlist result', () => {
  */
 describe('the waitlist tells the truth when the site cannot send at all', () => {
   it('reads not_configured from the route\'s own answer, and offers the repository instead of a retry', async () => {
-    vi.stubEnv('CONTACT_FORWARD_URL', '');
+    vi.stubEnv('EMAIL_API_KEY', '');
     const res = await postToRoute(
       filled({ name: 'Ada', email: 'ada@example.com', company: 'Analytical Engines Ltd', fleetSize: FLEET_SIZES[1], need: WAITLIST_NEED }),
     );
@@ -261,7 +271,7 @@ describe('the waitlist tells the truth when the site cannot send at all', () => 
     expect(error.retryable).toBe(false);
     const result = waitlistResult(res.status, error.code);
     expect(result).toBe('not_configured');
-    // Nothing was forwarded, so the claim "we'll email you when it opens" was never earned.
+    // Nothing was sent, so the claim "we'll email you when it opens" was never earned.
     expect(fetchMock).not.toHaveBeenCalled();
 
     const shown = renderToStaticMarkup(createElement(WaitlistForm, {}));

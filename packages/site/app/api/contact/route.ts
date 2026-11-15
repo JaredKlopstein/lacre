@@ -1,31 +1,37 @@
 /**
- * Enterprise contact: a Vercel function that forwards one submission to the URL
- * the owner sets in CONTACT_FORWARD_URL. No third-party SDK; one fetch.
+ * Enterprise contact: a Vercel function that emails one submission to
+ * LEGAL.contactEmail through the provider the owner configures in EMAIL_API_URL,
+ * EMAIL_API_KEY and EMAIL_FROM -- the same provider and the same three variables
+ * that deliver the sign-in link. No provider SDK; one fetch, in src/auth/email.ts.
  *
  * Enterprise has no price and is never sold through checkout, so this is the only
  * way in. It accepts the enterprise page's native form post
  * (application/x-www-form-urlencoded, answered with a 303 back to the page) and
  * JSON (answered with JSON, every error carrying its own fix).
  *
- * The forward URL is a secret of the owner's: it is never logged, never returned,
- * and never interpolated into an error. fetch's own error messages can contain the
- * URL, so failures are logged by error name only.
+ * The provider key is a secret of the owner's: it is never logged, never
+ * returned, and never interpolated into an error. fetch's own error messages can
+ * contain the endpoint, so failures are logged by error name only, and the
+ * configuration is reported by variable name only.
  *
  * Each valid submission counts against a per-IP limit kept in the site database
- * (DATABASE_URL) before it is forwarded; over the limit the answer is 429 and
- * nothing is forwarded. The limit fails closed: without DATABASE_URL, or when the
- * count fails, nothing is forwarded and the answer is a generic retryable 503
- * whose cause goes only to the log, under the request id the response carries.
+ * (DATABASE_URL) before it is sent; over the limit the answer is 429 and nothing
+ * is sent. The limit fails closed: without DATABASE_URL, or when the count fails,
+ * nothing is sent and the answer is a generic retryable 503 whose cause goes only
+ * to the log, under the request id the response carries.
  */
+import { type EmailConfig, type EmailMessage, emailConfig, sendEmail } from '../../../src/auth/email';
 import { allowContact, clientIp } from '../../../src/auth/rate-limit';
 // The site's auth database (DATABASE_URL), where the rate limit is kept.
 import { DATABASE_URL_ENV, usedTokenDb } from '../../../src/auth/used-tokens';
 import { BRAND } from '../../../src/brand';
 import { CONTACT_CODES, FLEET_SIZES, HONEYPOT_FIELD, type ContactOutcome, type FleetSize } from '../../../src/contact';
+// The address every submission is emailed to, and the facts the policy states.
+import { LEGAL } from '../../../src/legal';
 
-const FORWARD_ENV = 'CONTACT_FORWARD_URL';
 const MAX_BODY_BYTES = 16 * 1024;
-const FORWARD_TIMEOUT_MS = 10_000;
+/** Long enough to carry the company and the fleet size, short enough for an inbox list. */
+const MAX_SUBJECT_FIELD = 120;
 const LIMITS = { name: 200, email: 254, company: 200, need: 5000 } as const;
 // Format only: one @, no spaces, a dotted domain ending in a 2+ letter TLD.
 const EMAIL = /^[^\s@<>()[\]",;:]+@[^\s@<>()[\]",;:]+\.[A-Za-z]{2,}$/;
@@ -61,17 +67,17 @@ export async function POST(request: Request): Promise<Response> {
   const fail = (status: number, outcome: ContactOutcome, error: ErrorBody, bad: readonly string[] = []) =>
     reply(status, outcome, { error }, bad);
 
-  const forward = forwardUrl();
-  if ('cause' in forward) {
-    // The answer is generic: the cause, which names the variable, goes only to the
-    // log, under the request id the response carries.
+  const target = sendTarget();
+  if ('cause' in target) {
+    // The answer is generic: the cause, which names the variables, goes only to
+    // the log, under the request id the response carries.
     const requestId = crypto.randomUUID();
-    console.error(`contact: request ${requestId}: ${forward.cause}`);
+    console.error(`contact: request ${requestId}: ${target.cause}`);
     const headers = { 'x-request-id': requestId };
     // A different outcome from the retryable one below, because this cannot be
-    // fixed by waiting: until the operator sets the forward target, no message
-    // sent from here reaches anyone. The page says so instead of saying "try
-    // again in a few minutes", which was never going to work.
+    // fixed by waiting: until the operator configures the email provider, no
+    // message sent from here reaches anyone. The page says so instead of saying
+    // "try again in a few minutes", which was never going to work.
     if (form) return redirect('/enterprise?contact=not_configured', headers);
     const error: ErrorBody = {
       code: CONTACT_CODES.notConfigured,
@@ -83,7 +89,6 @@ export async function POST(request: Request): Promise<Response> {
     };
     return json(503, { error, requestId }, headers);
   }
-  const target = forward.url;
 
   const raw = await request.text();
   if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) {
@@ -134,27 +139,23 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  try {
-    const res = await fetch(target, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ...checked, submittedAt: new Date().toISOString() }),
-      signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      console.error(`contact: forward rejected with HTTP ${res.status}`);
-      return forwardFailed(fail);
-    }
-  } catch (err) {
-    console.error(`contact: forward failed (${err instanceof Error ? err.name : 'unknown error'})`);
-    return forwardFailed(fail);
-  }
+  const sent = await sendEmail(
+    target.email,
+    contactMessage(target.to, checked, new Date().toISOString()),
+    'contact',
+  );
+  if (!sent) return sendFailed(fail);
   return reply(200, 'sent', { ok: true, message: SENT });
 }
 
 const SENT = `Thanks. The ${BRAND.name} team has your message and will reply to the email you gave.`;
 
-function forwardFailed(fail: (status: number, outcome: ContactOutcome, error: ErrorBody) => Response) {
+/**
+ * The provider would not take the message. `CONTACT_FORWARD_FAILED` keeps its
+ * name: the waitlist branches on that code, and renaming it would change a
+ * published contract for nothing.
+ */
+function sendFailed(fail: (status: number, outcome: ContactOutcome, error: ErrorBody) => Response) {
   return fail(502, 'failed', {
     code: 'CONTACT_FORWARD_FAILED',
     message: `Your message could not be delivered. ${NOTHING_SENT}`,
@@ -164,7 +165,7 @@ function forwardFailed(fail: (status: number, outcome: ContactOutcome, error: Er
 }
 
 /**
- * The rate limiter cannot count: forward nothing and answer a generic, retryable
+ * The rate limiter cannot count: send nothing and answer a generic, retryable
  * 503. The cause, which may name a variable, goes only to the log.
  */
 function limiterDown(form: boolean, cause: string): Response {
@@ -191,16 +192,56 @@ function errorCode(err: unknown): string | null {
 }
 
 /**
- * The configured http(s) forward URL, or the cause it is unusable. A malformed
- * value counts as unset; the cause names the variable, never its value.
+ * The provider configuration and the address to send to, or the cause nothing
+ * can be sent. The cause names variables and the missing fact, never a value.
  */
-function forwardUrl(): { url: string } | { cause: string } {
-  const value = process.env[FORWARD_ENV]?.trim();
-  if (!value) return { cause: `${FORWARD_ENV} is not set` };
-  if (!URL.canParse(value) || !/^https?:$/.test(new URL(value).protocol)) {
-    return { cause: `${FORWARD_ENV} is set but is not an http(s) URL` };
+function sendTarget(): { email: EmailConfig; to: string } | { cause: string } {
+  const config = emailConfig('contact');
+  if ('missing' in config) {
+    return { cause: `the email provider is not configured; missing ${config.missing.join(', ')}` };
   }
-  return { url: value };
+  // Typed `string | null`: a deployment with no published contact address has
+  // nowhere to send a submission, which is the same dead end as an unset
+  // variable and gets the same not-retryable answer.
+  const to = LEGAL.contactEmail;
+  if (!to) return { cause: 'there is no contact address to send to (LEGAL.contactEmail is null)' };
+  return { email: config.email, to };
+}
+
+/**
+ * The message that lands in the team inbox: the five fields the form collects,
+ * in the order it shows them, and when it was submitted.
+ *
+ * The subject has to be findable in a mailbox list, so it carries the company
+ * and the fleet size -- both of them typed by a stranger. They go through
+ * subjectSafe() first: a header built from a value holding a newline is how a
+ * sender injects headers of its own.
+ */
+function contactMessage(to: string, submission: ContactSubmission, submittedAt: string): EmailMessage {
+  const company = subjectSafe(submission.company);
+  return {
+    to,
+    subject: `${BRAND.name} Enterprise enquiry: ${company} (${submission.fleetSize})`,
+    text: [
+      `Name: ${submission.name}`,
+      `Email: ${submission.email}`,
+      `Company: ${submission.company}`,
+      `Fleet size: ${submission.fleetSize}`,
+      `Submitted: ${submittedAt}`,
+      '',
+      'Message:',
+      submission.need,
+      '',
+      `Reply to ${submission.email}.`,
+      '',
+    ].join('\n'),
+  };
+}
+
+/** One line, no control characters, short enough for a subject. */
+function subjectSafe(value: string): string {
+  const flat = value.replace(/[\p{Cc}\p{Cf}\s]+/gu, ' ').trim();
+  return flat.length > MAX_SUBJECT_FIELD ? `${flat.slice(0, MAX_SUBJECT_FIELD - 1)}\u2026` : flat;
 }
 
 function isForm(request: Request): boolean {
