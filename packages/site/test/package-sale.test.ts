@@ -155,6 +155,13 @@ describe('the Privacy Policy no longer describes collecting anchors for the pack
   it('keeps what that bullet sat beside: the chain file for an evidence bundle, and its retention', () => {
     const body = privacy();
     expect(body).toContain('Your chain file, if you buy an evidence bundle.');
-    expect(body).toMatch(/we keep the chain file and the bundle for \S/);
+    // This guard exists so that removing the package bullet cannot take the
+    // bundle's chain-file bullet with it, and it did its job here: the sentence
+    // it pinned, "we keep the chain file and the bundle for 90 days", is reworded
+    // in this change because nothing enforces that period. The bullet is what is
+    // being protected, not that particular verb, so the assertion follows the
+    // wording rather than blocking it. The period itself is pinned in
+    // privacy-retention.test.ts, which reads the list of periods from LEGAL.
+    expect(body).toMatch(/we delete it and the bundle within \S/);
   });
 });
