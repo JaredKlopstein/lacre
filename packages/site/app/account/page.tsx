@@ -5,7 +5,8 @@ import { redirect } from 'next/navigation';
 import { BRAND } from '../../src/brand';
 import { SIGNUP_PATH } from '../../src/auth/email';
 import { AccountBar } from '../../src/account-bar';
-import { accountPlan, formatDate, type AccountPlan } from '../../src/account-plan';
+import { accountBundles, accountPlan, formatDate, type AccountBundles, type AccountPlan } from '../../src/account-plan';
+import { BUNDLE_FULFILMENT } from '../../src/plans';
 import { billingDb } from '../../src/billing-db';
 import { signedInFromCookie } from '../../src/checkout';
 import { PORTAL_API_PATH, PORTAL_OUTCOMES, type PortalOutcome } from '../../src/portal';
@@ -26,12 +27,19 @@ const INTERVALS: Record<AccountPlan['interval'], string> = { month: 'monthly', y
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-/** The account's current plan, null when none is recorded yet, or 'unavailable' when the database can't be read. */
-async function currentPlan(accountId: string): Promise<AccountPlan | null | 'unavailable'> {
+/** The subscription and the bundles together: one database handle, so one failure to report. */
+interface Billing {
+  plan: AccountPlan | null;
+  bundles: AccountBundles | null;
+}
+
+/** What this account has bought, or 'unavailable' when the billing database can't be read. */
+async function billingFor(accountId: string): Promise<Billing | 'unavailable'> {
   const db = billingDb();
   if (!db) return 'unavailable';
   try {
-    return await accountPlan(db, accountId);
+    const [plan, bundles] = await Promise.all([accountPlan(db, accountId), accountBundles(db, accountId)]);
+    return { plan, bundles };
   } catch (err) {
     console.error(`account: could not read the plan (${err instanceof Error ? err.name : 'unknown error'})`);
     return 'unavailable';
@@ -44,7 +52,9 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
 
   const { billing } = await searchParams;
   const outcome = PORTAL_OUTCOMES.find((o) => o === billing);
-  const plan = await currentPlan(account.accountId);
+  const billingRecord = await billingFor(account.accountId);
+  const plan = billingRecord === 'unavailable' ? 'unavailable' : billingRecord.plan;
+  const bundles = billingRecord === 'unavailable' ? null : billingRecord.bundles;
 
   return (
     <>
@@ -61,7 +71,9 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
           <p>Plan details are not available right now. Manage billing still opens the billing portal.</p>
         ) : plan === null ? (
           <p>
-            No plan recorded for this account yet. A purchase shows here once Stripe confirms it.{' '}
+            {bundles
+              ? 'No subscription on this account.'
+              : 'No plan recorded for this account yet. A purchase shows here once Stripe confirms it.'}{' '}
             <Link href="/pricing">See pricing</Link>.
           </p>
         ) : (
@@ -80,6 +92,21 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
                 </p>
               )
             )}
+          </>
+        )}
+        {bundles && (
+          <>
+            <h2>Evidence bundles</h2>
+            <p>
+              <strong>
+                {bundles.bought} {bundles.bought === 1 ? 'bundle' : 'bundles'} bought
+              </strong>
+            </p>
+            <p>
+              Most recent on{' '}
+              <time dateTime={bundles.latestAt.toISOString().slice(0, 10)}>{formatDate(bundles.latestAt)}</time>.
+            </p>
+            <p>{BUNDLE_FULFILMENT}</p>
           </>
         )}
         <h2>Billing</h2>
