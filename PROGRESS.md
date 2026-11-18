@@ -21,9 +21,14 @@ catching a forged bundle and a truncated one.
   recorded for this account yet". Merged as #261 → `e1759a8`. *VERIFIED BY TEST on the
   merge commit: `pnpm run ci` green, 74 files / 1,578 tests, plus 194 offline* —
   **not verified live**, because sign-in is shut (below), so the page is unreachable.
-- **The sign-in door is shut, and this was not previously recorded.** Production holds
-  **exactly one** environment variable, `DATABASE_URL` (`hiddenProductionEnvCount: 0`).
-  `SESSION_SECRET` is set for *development* and *preview* only. Both auth routes call
+- **The sign-in door is shut, and this was not previously recorded.** Production now holds
+  **two** environment variables, `DATABASE_URL` and `SESSION_SECRET` — the latter set
+  2026-11-18 (64 random characters, Production only, type Secret), on Jared's word, after
+  this pass found it missing. It had been set for *development* and *preview* only.
+  **It has not reached the running deployment yet**: Vercel applies an environment change
+  to new deployments, and "existing deployments keep their previous environment variables"
+  (Vercel docs). A redeploy is needed, and is not worth spending until the `EMAIL_*`
+  variables are set too, because sign-in needs those as well. Both auth routes call
   `authConfig()`, which needs `SESSION_SECRET` **and** all three `EMAIL_*`, and
   `/api/auth/magic-link` additionally requires `MAGIC_LINK_ENABLED=1`. So every sign-in
   attempt answers 503 "Email sign-in is not configured on this server yet."
@@ -44,8 +49,8 @@ make **sign-in** work, and `/account` is behind sign-in.
 | surface | needs | in production |
 |---|---|---|
 | `/api/contact` | `EMAIL_API_URL`, `EMAIL_API_KEY`, `EMAIL_FROM` | none set |
-| `/api/auth/magic-link` | `MAGIC_LINK_ENABLED=1`, `SESSION_SECRET`, the three `EMAIL_*`, `DATABASE_URL`, and the table from `packages/site/migrations/0001_magic_link_rate.sql` | `DATABASE_URL` only |
-| `/api/auth/callback` | `SESSION_SECRET`, the three `EMAIL_*`, `DATABASE_URL`, and the table from `packages/site/migrations/0000_magic_link_used.sql` | `DATABASE_URL` only |
+| `/api/auth/magic-link` | `MAGIC_LINK_ENABLED=1`, `SESSION_SECRET`, the three `EMAIL_*`, `DATABASE_URL`, and the table from `packages/site/migrations/0001_magic_link_rate.sql` | `DATABASE_URL` + `SESSION_SECRET` |
+| `/api/auth/callback` | `SESSION_SECRET`, the three `EMAIL_*`, `DATABASE_URL`, and the table from `packages/site/migrations/0000_magic_link_used.sql` | `DATABASE_URL` + `SESSION_SECRET` |
 
 `SESSION_SECRET` must be at least 32 characters; shorter is logged and treated as unset.
 Whether the two `packages/site/migrations/` tables are applied to Neon is **unverified** —
@@ -82,9 +87,9 @@ the API against the current `main` before trusting any number in this file.
 Listed in the order that unblocks the most for the least work. We work these one at a
 time, not as a batch.
 
-1. **Set `SESSION_SECRET` in Vercel production**, marked Sensitive, 32+ random characters.
-   No external dependency, no deploy needed. Required by both auth routes, whatever email
-   provider is chosen later. It is set for development and preview but not production.
+1. ~~Set `SESSION_SECRET` in Vercel production~~ — **done 2026-11-18**, by Claude on
+   Jared's explicit word, value never displayed anywhere. 64 characters, Production only,
+   type Secret. Verified names-only: production went from 1 key to 2.
 2. **Set `EMAIL_API_URL` = `https://api.resend.com/emails`, `EMAIL_API_KEY`, `EMAIL_FROM`**
    in Vercel production, marked Sensitive. Needs a Resend-verified sending domain first.
    This alone makes the contact form work end to end.
@@ -106,10 +111,15 @@ time, not as a batch.
 ## Next three steps to live
 
 1. ~~Merge #261~~ — **done**, `e1759a8`, deployed and green on `main`.
-2. **Set `SESSION_SECRET` in production.** Yours. Cheapest item on the critical path to
-   `/account`, and nothing else about sign-in can be tested until it is set.
-3. **Then the three `EMAIL_*` variables**, then the two site migrations, then
-   `MAGIC_LINK_ENABLED=1`. Yours, with me verifying each step after it.
+2. ~~Set `SESSION_SECRET` in production~~ — **done**, see above. Stored but not yet live,
+   pending a redeploy that is deliberately being saved for later.
+3. **Set the three `EMAIL_*` variables**, then the two site migrations, then
+   `MAGIC_LINK_ENABLED=1`, then **one redeploy** to make the whole lot take effect.
+   Jared's call on each; I verify after each one.
+
+**An environment change needs a redeploy.** The first pass said of the `EMAIL_*` variables
+"No deploy follows — the page flips itself". That is wrong: Vercel applies an environment
+change to new deployments only. Set everything, then redeploy once.
 
 ## Known stale or unverified
 
