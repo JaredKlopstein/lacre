@@ -48,7 +48,7 @@ make **sign-in** work, and `/account` is behind sign-in.
 
 | surface | needs | in production |
 |---|---|---|
-| `/api/contact` | `EMAIL_API_URL`, `EMAIL_API_KEY`, `EMAIL_FROM` | none set |
+| `/api/contact` | `EMAIL_API_URL`, `EMAIL_API_KEY`, `EMAIL_FROM` — **not** gated by `MAGIC_LINK_ENABLED` | all but `EMAIL_FROM` |
 | `/api/auth/magic-link` | `MAGIC_LINK_ENABLED=1`, `SESSION_SECRET`, the three `EMAIL_*`, `DATABASE_URL`, and the table from `packages/site/migrations/0001_magic_link_rate.sql` | `DATABASE_URL` + `SESSION_SECRET` |
 | `/api/auth/callback` | `SESSION_SECRET`, the three `EMAIL_*`, `DATABASE_URL`, and the table from `packages/site/migrations/0000_magic_link_used.sql` | `DATABASE_URL` + `SESSION_SECRET` |
 
@@ -90,9 +90,18 @@ time, not as a batch.
 1. ~~Set `SESSION_SECRET` in Vercel production~~ — **done 2026-11-18**, by Claude on
    Jared's explicit word, value never displayed anywhere. 64 characters, Production only,
    type Secret. Verified names-only: production went from 1 key to 2.
-2. **Set `EMAIL_API_URL` = `https://api.resend.com/emails`, `EMAIL_API_KEY`, `EMAIL_FROM`**
-   in Vercel production, marked Sensitive. Needs a Resend-verified sending domain first.
-   This alone makes the contact form work end to end.
+2. **`EMAIL_FROM` — the only one left.** `EMAIL_API_KEY` was set by Jared 2026-11-18
+   (Secret, Production). `EMAIL_API_URL` was set by Claude the same day to
+   `https://api.resend.com/emails`, the value `.env.example` names for Resend, as type
+   **Config rather than Secret on purpose**: it is Resend's public documented endpoint, not
+   a secret, and plain means a typo in it can be read back and audited later.
+   `EMAIL_FROM` must be "a verified sender at a domain the provider accepts"
+   (`.env.example`), and **which domain is verified is not recorded anywhere in this
+   repository** — `LEGAL.contactEmail` is `contact@frontierforge.tech` while the site is
+   lacre.dev, so it cannot be inferred. Guessing it would fail at send time in front of a
+   real visitor, so it is being asked rather than assumed.
+   Production now holds **4** keys: `DATABASE_URL`, `SESSION_SECRET`, `EMAIL_API_KEY`,
+   `EMAIL_API_URL`.
 3. **Apply `packages/site/migrations/0000_magic_link_used.sql` and `0001_magic_link_rate.sql`**
    to Neon, if they are not already applied — then `MAGIC_LINK_ENABLED=1` can go on and
    sign-in works. Flipping that flag before the rate-limit table exists only changes which
@@ -113,9 +122,10 @@ time, not as a batch.
 1. ~~Merge #261~~ — **done**, `e1759a8`, deployed and green on `main`.
 2. ~~Set `SESSION_SECRET` in production~~ — **done**, see above. Stored but not yet live,
    pending a redeploy that is deliberately being saved for later.
-3. **Set the three `EMAIL_*` variables**, then the two site migrations, then
-   `MAGIC_LINK_ENABLED=1`, then **one redeploy** to make the whole lot take effect.
-   Jared's call on each; I verify after each one.
+3. **`EMAIL_FROM`, then one redeploy** — that alone makes the **contact form** work end to
+   end, because `.env.example` records that the contact form is *not* gated by
+   `MAGIC_LINK_ENABLED`. Sign-in needs more after that: the two site migrations, then
+   `MAGIC_LINK_ENABLED=1`. Jared's call on each; I verify after each one.
 
 **An environment change needs a redeploy.** The first pass said of the `EMAIL_*` variables
 "No deploy follows — the page flips itself". That is wrong: Vercel applies an environment
