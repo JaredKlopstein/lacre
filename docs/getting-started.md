@@ -1,9 +1,10 @@
 # Getting started from source
 
-`@lacre/core` and `@lacre/verifier` are not published to npm yet, so
-`npx @lacre/...` and a global `lacre` command will not work. Until they
-are, run everything from a source checkout. Every command below runs from the
-repository root, in order, with no edits.
+`@lacre/core` and `@lacre/verifier` are on npm: `npm install -g @lacre/core`
+gives you the `lacre` command, and `npx @lacre/verifier` runs the verifier
+without installing it. This guide runs everything from a source checkout
+instead, so you can read and change the code as you go. Every command below
+runs from the repository root, in order, with no edits.
 
 You need Node 22.5.0 or later and pnpm 11. On Node 22 to 24, `corepack enable`
 provides the pinned version. Node 25 and later no longer bundle corepack, so

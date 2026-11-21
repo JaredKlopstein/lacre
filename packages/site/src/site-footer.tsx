@@ -61,7 +61,7 @@ export function SiteFooter() {
         <div>
           <h2 className={styles.heading}>Status</h2>
           <p>
-            Core and verifier: run from source. Cloud: {CLOUD_STATUS}.
+            Core and verifier: install from npm or run from source. Cloud: {CLOUD_STATUS}.
           </p>
         </div>
       </div>

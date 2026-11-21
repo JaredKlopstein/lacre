@@ -22,8 +22,10 @@ lacre record --action refund.issue \
 lacre chain verify --json
 ```
 
-**Trying it?** The packages are not on npm yet, so run Lacre from a source
-checkout: [Getting started from source](https://github.com/JaredKlopstein/lacre/blob/main/docs/getting-started.md)
+**Trying it?** Install the CLI from npm with `npm install -g @lacre/core`, which
+needs Node.js 22.5 or later and lets the native SQLite module build (see
+**Native dependency** below), or run Lacre from a source checkout:
+[Getting started from source](https://github.com/JaredKlopstein/lacre/blob/main/docs/getting-started.md)
 covers clone and build, a first receipt, and an offline check of a real
 anchored bundle.
 
