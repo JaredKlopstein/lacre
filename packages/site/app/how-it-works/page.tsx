@@ -52,8 +52,8 @@ export default function HowItWorksPage() {
       <section>
         <h1>How it works</h1>
         <p>
-          From one agent action to evidence a third party can check without trusting the operator,
-          in five steps.
+          From one agent action to evidence a third party can check for signs of later change, without
+          access to the operator’s systems, in five steps.
         </p>
       </section>
       <figure>

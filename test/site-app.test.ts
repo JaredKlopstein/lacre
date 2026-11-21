@@ -18,7 +18,7 @@ import { VERDICT_NAMES } from '../packages/verifier/src/bundle.js';
 
 const APP = new URL('../packages/site/app/', import.meta.url).pathname;
 const SUB_HEADLINE =
-  'Every consequential action gets a signed, hash-chained receipt. Anchor the chain with a timestamp from an authority you don’t control, and anyone can verify the record offline, without trusting you.';
+  'Every consequential action gets a signed, hash-chained receipt. Anchor the chain with a timestamp from an authority you don’t control, and anyone with the bundle can check offline that the record hasn’t changed since it was anchored, without running your systems. They should still confirm your agents’ keys and choose which timestamp authority to trust.';
 
 // react-dom is a dependency of the site, not of the workspace root.
 const siteRequire = createRequire(new URL('../packages/site/package.json', import.meta.url));
@@ -119,7 +119,7 @@ describe('site app folder', () => {
 describe('home page', () => {
   it('leads with the outcome-led headline and the sub-headline', () => {
     // The id names the hero region, so a screen reader's landmark list reads the headline, not "Hero".
-    expect(home).toContain('<h1 id="hero-title">Your agent says it refunded $42.50. Prove it.</h1>');
+    expect(home).toContain('<h1 id="hero-title">Your agent says it refunded $42.50. Get a signed, tamper-evident record of what it reported.</h1>');
     expect(text(home)).toContain(SUB_HEADLINE);
   });
 

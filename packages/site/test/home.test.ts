@@ -44,9 +44,9 @@ describe('home page', () => {
   });
 
   it('leads with the approved H1 (D2) and a sub-line that does not say the free tier is timestamped (M4)', () => {
-    expect(hero).toContain('<h1 id="hero-title">Your agent says it refunded $42.50. Prove it.</h1>');
+    expect(hero).toContain('<h1 id="hero-title">Your agent says it refunded $42.50. Get a signed, tamper-evident record of what it reported.</h1>');
     expect(unescape(hero).replace(/\s+/g, ' ')).toContain(
-      '>Every consequential action gets a signed, hash-chained receipt. Anchor the chain with a timestamp from an authority you don’t control, and anyone can verify the record offline, without trusting you.</p>',
+      '>Every consequential action gets a signed, hash-chained receipt. Anchor the chain with a timestamp from an authority you don’t control, and anyone with the bundle can check offline that the record hasn’t changed since it was anchored, without running your systems. They should still confirm your agents’ keys and choose which timestamp authority to trust.</p>',
     );
     expect(text).not.toContain('receipt, timestamped by an authority');
   });
@@ -95,7 +95,9 @@ describe('home page', () => {
     expect(slot).toContain('<h2 id="exhibit-title">Exhibit A: live chain</h2>');
     expect(slot.match(/>SEQ \d</g)).toHaveLength(3);
     expect(slot).toContain('>ANCHOR<');
-    expect(slot).toContain('<strong>Intact</strong>');
+    // The demo label is part of the verdict: the panel checks links and the committed
+    // head, not signatures or the timestamp (#255).
+    expect(slot).toContain('<strong>Intact (demo)</strong>');
     expect(html.match(/id="exhibit-title"/g)).toHaveLength(1);
     // The static example is gone, and with it the page's only <pre> (7/9 adds one back).
     expect(html).not.toContain('aria-label="Example receipt"');
@@ -109,7 +111,7 @@ describe('home page', () => {
 
   it('renders the limits table from the shared PROOF_TABLE under its own heading', () => {
     expect(html).toContain(
-      '<h2 id="proof-table-title">Once anchored, history up to the anchor can’t be rewritten: not by your agents, and not by you.</h2>',
+      '<h2 id="proof-table-title">Once anchored, any change to history up to the anchor is detected: by anyone holding the bundle, whether the change came from your agents or from you.</h2>',
     );
     expect(tableRows(html)).toEqual(PROOF_TABLE.map((r) => [r.property, r.local, r.anchored]));
   });
