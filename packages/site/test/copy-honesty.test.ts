@@ -37,6 +37,82 @@ const pages = {
   checkout: renderToStaticMarkup(await CheckoutPage({ searchParams: Promise.resolve({}) })),
 };
 
+/**
+ * The overclaims the November 2026 legal review took out (#255, #259), kept out.
+ *
+ * Each of these said more than Lacre's own Security, Verify and Terms pages
+ * support, and each was replaced with copy Counsel approved. A sweep is the right
+ * guard because the wording is not owned by one component: the same lines were
+ * repeated across the home page, the Exhibit A panel, /how-it-works and the
+ * GitHub Pages landing, and that repetition is how three of them survived the
+ * first pass. Anything reintroducing one fails here rather than on a live page.
+ *
+ * Comment lines are stripped first, so a comment may still quote a removed
+ * phrase to explain why it went -- exhibit-chain.tsx does exactly that.
+ */
+describe('the overclaims legal review removed stay removed', () => {
+  const SURFACES = [
+    'packages/site/app/page.tsx',
+    'packages/site/app/how-it-works/page.tsx',
+    'packages/site/app/security/page.tsx',
+    'packages/site/app/pricing/page.tsx',
+    'packages/site/app/verify/page.tsx',
+    'packages/site/app/terms/page.tsx',
+    'packages/site/app/privacy/page.tsx',
+    'packages/site/src/exhibit-chain.tsx',
+    'packages/site/src/plans.ts',
+    'packages/site/src/proof-table.ts',
+    'docs/index.html',
+  ] as const;
+
+  /** Shipped text only: whole-line // and * and <!-- comments dropped. */
+  const shipped = (file: string) =>
+    readFileSync(new URL(`../../../${file}`, import.meta.url), 'utf8')
+      .split('\n')
+      .filter((line) => {
+        const t = line.trim();
+        return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*') || t.startsWith('<!--'));
+      })
+      .join('\n');
+
+  const BANNED: readonly (readonly [RegExp, string])[] = [
+    [/\bProve it\b/i, 'claims proof of the action, not of the record (#255)'],
+    [/without trusting (?:you|the operator)/i, 'verification still rests on the keys and the operator (#255, #259)'],
+    [/no reason to trust/i, 'same claim, stronger wording (#259)'],
+    [/can(?:'|\u2019)t be rewritten|cannot be rewritten/i, 'an anchor makes a change detectable, it does not prevent one (#255)'],
+    [/quietly rewritten/i, 'same, and it omits the un-anchored tail (#259)'],
+    [/Nothing has been altered/i, 'the demo checks links and the head, not signatures or the timestamp (#255)'],
+    [/\bbackdated\b/i, 'overstates what the anchor covers (#259)'],
+    [/tamper-proof|\bimmutable\b/i, 'Lacre is tamper-evident, not tamper-proof'],
+    [/\badmissible\b|\bin court\b/i, 'no legal-grade claim is substantiated'],
+    [/agents? actually did|prove what your agents/i, 'Lacre records what an agent reported (#259)'],
+    [/makes it evidence/i, 'overstates what signing and anchoring deliver (#259)'],
+  ];
+
+  it('appears on no public surface', () => {
+    for (const file of SURFACES) {
+      const body = shipped(file);
+      for (const [pattern, why] of BANNED) {
+        expect(pattern.test(body), `${file} matches ${pattern}: ${why}`).toBe(false);
+      }
+    }
+  });
+
+  it('says the approved thing instead', () => {
+    const home = shipped('packages/site/app/page.tsx');
+    expect(home).toContain('Get a signed, tamper-evident record of what it reported.');
+    expect(home).toContain('any change to history up to the anchor is detected');
+    expect(home).toContain('Records added after the last anchor aren\u2019t covered until the next one.');
+
+    const exhibit = shipped('packages/site/src/exhibit-chain.tsx');
+    expect(exhibit).toContain('Signatures and the timestamp are not checked on this page.');
+
+    const pages = shipped('docs/index.html');
+    expect(pages).toContain('Lacre \u2014 tamper-evident receipts for what your agents report');
+    expect(pages).toContain('for signs that a record was changed, removed or reordered after it was signed');
+  });
+});
+
 describe('Cloud is never described as working', () => {
   it('no page says Cloud anchors, exports or batches in the present tense', () => {
     expect(OFF_SALE_PLANS.has('cloud')).toBe(true);

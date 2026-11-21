@@ -141,8 +141,12 @@ function authorityName(dn: string): string {
 function verdictCopy(verdict: Verdict, rows: readonly ChainRow[], anchorDate: string) {
   if (verdict === 'intact') {
     return {
-      title: 'Intact',
-      body: `Every receipt hashes to the value the next one points at, and the head matches the timestamp signed on ${anchorDate}. Nothing has been altered.`,
+      // "Nothing has been altered" is a verdict this panel cannot reach: it checks the
+      // links and the committed head in the browser, and neither the timestamp token nor
+      // the agent's public key is on the page (#255). The title carries the demo label so
+      // the claim is scoped wherever the body is read apart from it.
+      title: 'Intact (demo)',
+      body: 'The hashes link and the head matches the committed value. Signatures and the timestamp are not checked on this page.',
     };
   }
   if (verdict === 'tampered') {
