@@ -61,12 +61,21 @@ export interface LegalFacts {
 export const SECURITY_REPORT_URL = `${BRAND.repository}/security/advisories/new`;
 
 export const LEGAL: LegalFacts = {
-  // Supplied by the owner on 2026-11-10. mailboxProvider hosts the inbox the owner
-  // named for chain files (contact@frontierforge.tech); the owner confirmed it.
+  // Supplied by the owner on 2026-11-10. The contact address moved from
+  // contact@frontierforge.tech to hello@lacre.dev on 2026-11-20, so the site shows
+  // one brand (#254); mail to it lands in the hello@ascellastudios.com mailbox.
+  //
+  // mailboxProvider moved with it, and had to. It names the company holding the
+  // inbox that receives chain files and contact messages, and the two domains are
+  // on different providers: frontierforge.tech's MX is
+  // frontierforge-tech.mail.protection.outlook.com (Microsoft 365), while both
+  // lacre.dev and ascellastudios.com answer with smtp.google.com. Changing the
+  // address alone would have left /privacy naming a processor that no longer sees
+  // the mail. test/contact-address.test.ts holds the two together.
   entityName: 'Ascella Studios LLC',
   entityJurisdiction: 'a Wisconsin limited liability company',
-  contactEmail: 'contact@frontierforge.tech',
-  securityEmail: 'contact@frontierforge.tech',
+  contactEmail: 'hello@lacre.dev',
+  securityEmail: 'hello@lacre.dev',
   postalAddress: '408 N Votech Drive, Watertown, WI 53098',
   effectiveDate: '2026-11-14',
   refundWindowDays: 30,
@@ -74,7 +83,7 @@ export const LEGAL: LegalFacts = {
   emailProvider: 'Resend',
   contactRetention: '90 days',
   bundleRetention: '90 days',
-  mailboxProvider: 'Microsoft 365 (Exchange Online)',
+  mailboxProvider: 'Google Workspace (Gmail)',
   // The contact form sends its submission as email through the same provider as
   // the sign-in link, so the company that carries it is emailProvider. Whoever
   // it is set to has to be named here in the same change; it is set here because

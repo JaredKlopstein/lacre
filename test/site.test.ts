@@ -299,8 +299,8 @@ describe('pricing cards', () => {
 
   it('offers the owner\'s published contact address, and no other contact route', () => {
     const enterprise = cards().get('enterprise')!;
-    expect(enterprise).toContain('<a href="mailto:contact@frontierforge.tech">contact@frontierforge.tech</a>');
-    expect(html.match(/mailto:[^"]+/g)).toEqual(['mailto:contact@frontierforge.tech']);
+    expect(enterprise).toContain('<a href="mailto:hello@lacre.dev">hello@lacre.dev</a>');
+    expect(html.match(/mailto:[^"]+/g)).toEqual(['mailto:hello@lacre.dev']);
   });
 
   it('says how a bundle arrives, and that the signing key never leaves the buyer', () => {

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { BRAND } from '../../src/brand';
 import { LEGAL, PRIVACY_PATH, fact } from '../../src/legal';
 import { LegalNotice } from '../../src/legal-notice';
-import { FREE_FIRST_BUNDLES, NINETY_DAY_PACKAGE } from '../../src/plans';
+import { FREE_FIRST_BUNDLES, NINETY_DAY_PACKAGE, OFF_SALE_PLANS } from '../../src/plans';
 
 export const metadata: Metadata = {
   title: 'Terms',
@@ -75,8 +75,16 @@ export default function TermsPage() {
           : refundDays === 0
             ? 'Purchases are not refundable, except where the law requires otherwise.'
             : `You can request a refund within ${refundDays} days of purchase by writing to ${fact('contactEmail')}, for an evidence bundle we have not yet delivered. A delivered bundle is not refundable: its timestamp has already been issued and cannot be undone.`}{' '}
-        A subscription can be cancelled at any time in the billing portal on your account page; it stays active
-        until the end of the period already paid for.
+        {/*
+          Cloud is the only subscription, and it is off sale: nobody can have one, so
+          cancellation terms for it describe a relationship that cannot exist. Saying
+          the terms will be here before anyone can subscribe is the promise this page
+          can keep. The portal sentence returns with the product, from OFF_SALE_PLANS,
+          not from an edit here.
+        */}
+        {OFF_SALE_PLANS.has('cloud')
+          ? 'Subscriptions (Cloud) are not on sale yet. When they open, we will add their renewal, cancellation and refund terms here before anyone can subscribe.'
+          : 'A subscription can be cancelled at any time in the billing portal on your account page; it stays active until the end of the period already paid for.'}
       </p>
       <p>
         {refundDays === 0

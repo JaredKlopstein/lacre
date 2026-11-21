@@ -142,9 +142,16 @@ describe('waitlist result, announced (persona review: Sam 2, Marcus 9)', () => {
     expect(html.indexOf('<button')).toBeLessThan(html.indexOf(alert));
   });
 
+  /**
+   * The invariant is the line below that forbids `sending` in the disabled
+   * expression: a button that goes disabled mid-submit drops the focus that was on
+   * it. `closed` is a different thing and is allowed -- it is known before render,
+   * never changes while the person is interacting, and marks a waitlist that cannot
+   * take an entry at all (#258). `aria-disabled` still carries the sending state.
+   */
   it('never disables the button once interactive, so focus is not dropped while sending', () => {
     const src = readFileSync(new URL('../app/pricing/waitlist-form.tsx', import.meta.url), 'utf8');
-    expect(src).toContain('disabled={!ready}');
+    expect(src).toContain('disabled={!ready || closed}');
     expect(src).toContain('aria-disabled={sending || undefined}');
     expect(src).not.toMatch(/\sdisabled=\{[^}]*sending/);
     expect(src).toContain("scrollIntoView({ block: 'nearest' })");

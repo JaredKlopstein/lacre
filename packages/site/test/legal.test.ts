@@ -42,7 +42,7 @@ const privacy = () => renderToStaticMarkup(PrivacyPage());
 
 /**
  * The facts the owner supplied (2026-11-10). The mailbox provider hosts the inbox
- * the owner named for chain files (contact@frontierforge.tech), as the owner
+ * the owner named for chain files (hello@lacre.dev), as the owner
  * confirmed.
  *
  * contactProcessor is the one entry here the owner did not name separately: the
@@ -54,8 +54,8 @@ const privacy = () => renderToStaticMarkup(PrivacyPage());
 const SUPPLIED: LegalFacts = {
   entityName: 'Ascella Studios LLC',
   entityJurisdiction: 'a Wisconsin limited liability company',
-  contactEmail: 'contact@frontierforge.tech',
-  securityEmail: 'contact@frontierforge.tech',
+  contactEmail: 'hello@lacre.dev',
+  securityEmail: 'hello@lacre.dev',
   postalAddress: '408 N Votech Drive, Watertown, WI 53098',
   effectiveDate: '2026-11-14',
   refundWindowDays: 30,
@@ -63,7 +63,10 @@ const SUPPLIED: LegalFacts = {
   emailProvider: 'Resend',
   contactRetention: '90 days',
   bundleRetention: '90 days',
-  mailboxProvider: 'Microsoft 365 (Exchange Online)',
+  // Moved with the contact address on 2026-11-20 (#254): lacre.dev's MX is
+  // smtp.google.com, where frontierforge.tech's was Microsoft's. See
+  // test/contact-address.test.ts, which holds the address and this together.
+  mailboxProvider: 'Google Workspace (Gmail)',
   contactProcessor: 'Resend',
 };
 
@@ -112,11 +115,14 @@ describe('Terms and Privacy pages', () => {
     const html = terms();
     expect(html).toContain('<h2>Refunds and cancellation</h2>');
     expect(html).toContain(
-      'You can request a refund within 30 days of purchase by writing to contact@frontierforge.tech, for an evidence bundle we have not yet delivered.',
+      'You can request a refund within 30 days of purchase by writing to hello@lacre.dev, for an evidence bundle we have not yet delivered.',
     );
     // A delivered bundle's timestamp has been issued and cannot be withdrawn.
     expect(html).toContain('A delivered bundle is not refundable: its timestamp has already been issued and cannot be undone.');
-    expect(html).toMatch(/cancelled at any time in the billing portal/);
+    // Cloud is off sale, so the page promises the terms rather than describing a
+    // cancellation nobody can perform (#258). The portal sentence returns with the product.
+    expect(html).toMatch(/Subscriptions \(Cloud\) are not on sale yet\./);
+    expect(html).not.toMatch(/cancelled at any time in the billing portal/);
     expect(html).toMatch(/does not show that an\s+action happened as described/);
   });
 
@@ -129,7 +135,7 @@ describe('Terms and Privacy pages', () => {
     // because nothing does. Same intent, so the assertion moves rather than goes.
     expect(html).toMatch(/we delete it and the bundle within\s+90 days/);
     expect(html).toContain('There is no automatic expiry');
-    expect(html).toContain('Microsoft 365 (Exchange Online), which hosts the inbox that receives chain files for evidence bundles.');
+    expect(html).toContain('Google Workspace (Gmail), which hosts the inbox that receives chain files for evidence bundles.');
     expect(html).toContain('We receive them only if you send us your chain file');
     expect(html).not.toContain('we never receive them');
     expect(REQUIRED_FACTS).toContain('bundleRetention');
@@ -163,7 +169,7 @@ describe('footer and checkout links', () => {
   });
 
   it('links Contact to the contact email now that it is set', () => {
-    expect(legalNav).toContain('href="mailto:contact@frontierforge.tech">Contact</a>');
+    expect(legalNav).toContain('href="mailto:hello@lacre.dev">Contact</a>');
   });
 
   it('checkout links the Terms and the Privacy Policy', () => {
@@ -183,7 +189,7 @@ describe('/.well-known/security.txt', () => {
     expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8');
     const body = await res.text();
     expect(SECURITY_REPORT_URL).toBe('https://github.com/JaredKlopstein/lacre/security/advisories/new');
-    expect(body.split('\n').slice(0, 2)).toEqual(['Contact: mailto:contact@frontierforge.tech', `Contact: ${SECURITY_REPORT_URL}`]);
+    expect(body.split('\n').slice(0, 2)).toEqual(['Contact: mailto:hello@lacre.dev', `Contact: ${SECURITY_REPORT_URL}`]);
     expect(body).not.toMatch(/owner to supply/);
   });
 
@@ -241,14 +247,14 @@ describe('the supplied facts on the Terms and Privacy pages', () => {
   it('Terms name the entity, its form, contact, postal address and Wisconsin law', () => {
     const html = terms().replace(/&#x27;/g, "'");
     expect(html).toContain('is run by Ascella Studios LLC, a Wisconsin limited liability company');
-    expect(html).toContain('contact@frontierforge.tech, or by post at 408 N Votech Drive, Watertown, WI 53098.');
+    expect(html).toContain('hello@lacre.dev, or by post at 408 N Votech Drive, Watertown, WI 53098.');
     expect(html).toContain('These terms are governed by the laws of the State of Wisconsin.');
   });
 
   it('Privacy names the entity, its contact and postal address, and 90-day contact retention', () => {
     const html = privacy();
     expect(html).toContain('Ascella Studios LLC, a Wisconsin limited liability company, is responsible');
-    expect(html).toContain('contact@frontierforge.tech or write to 408 N Votech Drive, Watertown, WI 53098.');
+    expect(html).toContain('hello@lacre.dev or write to 408 N Votech Drive, Watertown, WI 53098.');
     expect(html).toMatch(/90 days/);
   });
 
