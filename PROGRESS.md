@@ -1,11 +1,15 @@
 # PROGRESS — Lacre
 
-Updated: 2026-11-18, third pass · `main` at `e1759a8` · verified against origin: **yes**
-Checkout when written: branch `docs/progress-2026-11-18`, 0 behind `origin/main`, ahead by
-this file only. It is open as **PR #262** and is not on `main` yet.
+Updated: 2026-11-21 · `main` at `32c4f18` · verified against origin: **yes**
+Checkout when written: on `main`, 0 behind `origin/main`.
 
-Every claim below carries how it was checked. Re-check before acting: this pass found two
-entries in the previous one that were wrong, not merely stale.
+Every claim below carries how it was checked. Re-check before acting. This file has
+twice carried entries that were wrong rather than merely stale, so treat it as a
+starting hypothesis.
+
+Seven PRs landed on 20–21 November (#262, #264, #265, #266, #268, #269, #270) and nine
+issues closed. The backlog is down to **one open PR and two open issues**, both of which
+need a decision from Jared rather than more work.
 
 ## What "live" means for this product
 
@@ -14,8 +18,9 @@ A stranger can buy a $5 evidence bundle on lacre.dev and see the purchase record
 
 - The bundle sale is **shut**. *VERIFIED LIVE: `/checkout` says "not open yet, so nothing
   can be bought or charged here today."*
-- `/account` **does** now recognise a bundle purchase (#261). *VERIFIED BY TEST*
-- **No one can sign in**, so no customer can reach `/account` at all. One variable short.
+- `/account` **does** now recognise a bundle purchase (#261). *VERIFIED BY TEST.* Still
+  **not verified live**, because the page is behind sign-in.
+- **No one can sign in.** One variable short: `EMAIL_FROM`. See below.
 
 The product underneath — CLI, chain, offline verifier — does what the site claims,
 including catching a forged bundle and a truncated one. *VERIFIED BY TEST: 194 offline
@@ -23,149 +28,136 @@ verifier tests, which run with no network and no code from core or cloud.*
 
 ## Live now
 
-- lacre.dev serves current `main`. Production deploys are git-triggered from `ref=main`:
-  `e1759a8` deployed 2026-11-18 21:06 UTC, production, READY, no manual step.
-  *VERIFIED LIVE from the deployment record, which carries the commit SHA.*
-- **`/account` shows bundles bought** instead of telling a paying customer "No plan
-  recorded for this account yet". #261 → `e1759a8`. *VERIFIED BY TEST on the merge commit:
-  `pnpm run ci` green, 74 files / 1,578 tests, plus 194 offline.* **Not verified live** —
-  the page is behind sign-in, which is shut.
-- The GitHub Pages mirror **self-hosts its fonts correctly**. *VERIFIED LIVE: no Google
-  origin in the served HTML, `docs/fonts/` holds 6 woff2 files plus `OFL.txt` at `e1759a8`,
-  and the live `ibm-plex-sans-400-600.woff2` returns HTTP 200 as `font/woff2`.* The
-  previous pass listed this as an open privacy contradiction; that was **stale** — the fix
-  landed 2026-11-15. No visitor IP reaches Google.
+- lacre.dev serves current `main`; production deploys are git-triggered from `ref=main`.
+- **The site no longer overclaims.** The homepage headline is "Your agent says it refunded
+  $42.50. Get a signed, tamper-evident record of what it reported." *VERIFIED LIVE.* The
+  legal review's four homepage overclaims and five on the Pages landing are gone (#255,
+  #259 → #266), and a sweep of eleven patterns across every public surface fails CI if any
+  returns.
+- **One brand.** Every public contact point reads `hello@lacre.dev`. *VERIFIED LIVE.*
+- **`/robots.txt`, `/sitemap.xml`, `/favicon.ico`, `/apple-icon.png` all return 200**, with
+  the right content types. All four were 404 yesterday. *VERIFIED LIVE.*
+- **Every public page carries one canonical** on lacre.dev. *VERIFIED LIVE on /pricing.*
+- **Prices no longer read as buyable.** The not-on-sale status now comes before the figure
+  and the figure reads "Planned: $49/mo". *VERIFIED LIVE.*
+- **No known dependency advisories.** `pnpm audit --prod` → "No known vulnerabilities
+  found", down from 8 (#265). *VERIFIED LOCALLY on `main`.*
+- `pnpm run ci` on `main`: **1,613 tests + 194 offline**, green. *VERIFIED LOCALLY on the
+  merge commit, not on a branch.*
 
 ## Production environment
 
-It held **one** variable this morning. It now holds **four**. *VERIFIED by reading the
-project's variables names-only; no value was decrypted, and `SESSION_SECRET` was generated
-and piped straight to Vercel so it was never displayed, logged or written to disk.*
+Four variables, all `production`, names only. *VERIFIED LIVE from the Vercel project.*
 
-| key | type | set by |
+| Name | Kind | State |
 |---|---|---|
-| `DATABASE_URL` | Secret | pre-existing |
-| `SESSION_SECRET` | Secret | Claude, 2026-11-18, on Jared's explicit word |
-| `EMAIL_API_KEY` | Secret | Jared, 2026-11-18 |
-| `EMAIL_API_URL` | **Config** | Claude, 2026-11-18 — `https://api.resend.com/emails` |
-| `EMAIL_FROM` | — | **missing. This is the blocker.** |
+| `DATABASE_URL` | Secret | set |
+| `SESSION_SECRET` | Secret | set |
+| `EMAIL_API_KEY` | Secret | set |
+| `EMAIL_API_URL` | Config (plain, auditable) | set — `https://api.resend.com/emails` |
+| **`EMAIL_FROM`** | — | **NOT SET** |
+| `MAGIC_LINK_ENABLED` | — | **NOT SET** |
 
-`EMAIL_API_URL` is Config rather than Secret deliberately: it is Resend's public documented
-endpoint, the value `.env.example` names, so marking it Sensitive would buy no secrecy and
-would make a typo in it permanently unreadable. The two real secrets stay Secret.
-
-**An environment change needs a redeploy.** Vercel applies it to new deployments only;
-"existing deployments keep their previous environment variables" (Vercel docs). So nothing
-set today is reaching traffic yet. Set `EMAIL_FROM`, then redeploy **once**.
+A Vercel environment change reaches traffic only on the **next deployment**; existing
+deployments keep the variables they were built with. Set everything for a surface, then
+deploy once. The seven merges today each triggered a deploy, so everything currently set
+is live.
 
 ## What each surface needs
 
-| surface | needs | has |
+| Surface | Needs | State |
 |---|---|---|
-| `/api/contact` | the three `EMAIL_*`. **Not** gated by `MAGIC_LINK_ENABLED` (`.env.example`) | all but `EMAIL_FROM` |
-| `/api/auth/magic-link` | `MAGIC_LINK_ENABLED=1`, `SESSION_SECRET`, the three `EMAIL_*`, `DATABASE_URL`, and the table from `packages/site/migrations/0001_magic_link_rate.sql` | all but `EMAIL_FROM`, the flag, and the table |
-| `/api/auth/callback` | `SESSION_SECRET`, the three `EMAIL_*`, `DATABASE_URL`, and the table from `packages/site/migrations/0000_magic_link_used.sql` | all but `EMAIL_FROM` and the table |
+| Contact form, waitlist | `EMAIL_API_URL`, `EMAIL_API_KEY`, `EMAIL_FROM` | one short |
+| Sign-in (magic link) | the three above, plus `SESSION_SECRET`, `MAGIC_LINK_ENABLED=1`, and the two `packages/site/migrations/` tables applied | two short |
+| `/account` | sign-in working | blocked behind sign-in |
+| Bundle checkout | Stripe (issue #29) | not started |
 
-So **`EMAIL_FROM` plus one redeploy makes the contact form work end to end** — a whole
-surface live, without opening sign-in. Sign-in needs the flag and the migrations after that.
-
-`SESSION_SECRET` must be 32+ characters; shorter is logged and treated as unset.
+The site now **says all of this itself**, correctly, without anyone editing copy: the
+waitlist reads "The waitlist isn't taking sign-ups yet" and Enterprise reads "This form
+can't send messages yet", both derived from `contactForwarding()`. *VERIFIED LIVE —
+which is also the cleanest proof that `EMAIL_FROM` is still unset.* Both revert to
+promising a reply by themselves once sending is configured. No copy change is needed.
 
 ## Outstanding owner steps
 
-Only Jared can do these. In order; each one is verified before the next.
+In order. The first unblocks the most.
 
-1. **`EMAIL_FROM` — the one thing blocking a live surface.** It must be "a verified sender
-   at a domain the provider accepts" (`.env.example:51`). **Which domain is verified is
-   recorded nowhere in this repository**, and it cannot be inferred: the site is lacre.dev
-   while `LEGAL.contactEmail` and `securityEmail` are both `contact@frontierforge.tech`
-   (`legal.ts:68-69`), which is also where the contact form sends each submission. Our code
-   does no format validation on it, so a wrong value fails at Resend with a 502 in front of
-   a real visitor rather than at configuration time. **Tell Claude the address and it will
-   set it**, or set it in Vercel directly: Production, Sensitive not required.
-2. **One redeploy of `main`.** Needed for steps 1 and everything above to reach traffic.
-   Claude will not deploy without Jared's word.
-3. **Confirm the two `packages/site/migrations/` tables are applied to Neon** — 
-   `0000_magic_link_used.sql` and `0001_magic_link_rate.sql`. **Unverified and
-   unverifiable from here** without database access, and the routes' 503 is deliberately
-   generic, so the server log is the only tell. Then `MAGIC_LINK_ENABLED=1` can go on and
-   sign-in works.
-4. **Apply `packages/cloud/migrations/0003_free_bundles.sql`** to Neon. Nothing calls it
-   yet, so applying it late costs nothing.
-5. **Issue #29 — Stripe account, products, restricted keys, webhook, Vercel vars.** The
-   order is not the obvious one: keys and prices first (safe, they no longer open the sale),
-   and **`STRIPE_WEBHOOK_SECRET` last**, because since #232 that one variable is the switch
-   that opens the sale. **Stripe stays in test mode.**
-6. **npm publish 1.0.0 from `main`**, then #225 can merge. *De-risked 2026-11-18:*
-   `pnpm run release:dry` passes, `tsc -b` runs clean as prepublish, both packages are at
-   1.0.0, `@lacre/cloud` is `private: true` and correctly excluded, and neither package
-   exists on the registry yet (`npm view` → 404), so this is a clean first publish with no
-   version conflict. Tarballs contain only `LICENSE`, `README.md`, `bin/` and `dist/` —
-   **0** entries matching `internal/`, `.env`, `.vercel`, `.lacre` or `secret`. Core is
-   116.8 kB packed, verifier 50.3 kB. The one thing missing is auth: **`npm whoami` reports
-   not logged in.** *VERIFIED BY TEST*
-7. **Decide the retention question** (below). Not blocking anything while Cloud is off sale.
-8. **Merge PR #262**, this file, whenever convenient.
+1. **`EMAIL_FROM`** — a verified sender at a domain Resend accepts. Tell me the address and
+   I will set it without it appearing anywhere, or set it yourself. Nothing validates its
+   format in our code, so a wrong value fails at Resend with a 502 in front of a real
+   visitor. `lacre.dev` is Google-hosted and SPF'd; whether Resend has it verified as a
+   sending domain is the open question.
+2. **One redeploy of `main`** after that, so the variable reaches traffic.
+3. **Confirm the two `packages/site/migrations/` tables are applied to Neon**
+   (`0000_magic_link_used.sql`, `0001_magic_link_rate.sql`), then set
+   `MAGIC_LINK_ENABLED=1`. Not checkable from here: the routes' 503 is deliberately
+   generic, so the server log is the only tell.
+4. **Apply `packages/cloud/migrations/0003_free_bundles.sql`.**
+5. **Issue #29, Stripe** — keys and prices first, `STRIPE_WEBHOOK_SECRET` last, test mode
+   only. Owner-only by the issue's own terms: the build agent never holds a live key.
+6. **Decide the npm publish** (see Open PRs).
+7. **Decide the retention claim** (see below).
+8. **Issue #258's last item** — the Stripe check on the withdrawn 90-day package.
 
 ## Decision waiting on Jared: the retention claim
 
-`/pricing` advertises "90-day retention" as a Cloud plan feature, live right now.
-*VERIFIED LIVE.* It comes from `retentionDays: 90` in `packages/cloud/src/pricing.ts:83`,
-rendered by `packages/site/src/plans.ts:206`. **Nothing enforces it** — no purge job, no
-TTL, no scheduled delete; the only crons in the codebase are the anchor scheduler and the
-collector. *VERIFIED BY READ.*
+`/pricing` advertises "90-day retention" as a Cloud feature. **Nothing enforces it**: no
+purge job, no TTL, no scheduled delete. The only crons are the anchor scheduler and the
+collector. It is `retentionDays: 90` at `packages/cloud/src/pricing.ts:83`, rendered
+through `packages/site/src/plans.ts:206`. *VERIFIED BY READ.*
 
-This is the same defect #243 fixed in the Privacy Policy, left standing on the pricing
-page. Two ways out, and it is Jared's call, which is why Claude did not simply change the
-copy:
+This is the same defect class #243 fixed in the Privacy Policy, left standing one page
+over. Two legitimate fixes point opposite ways — make the period real, or soften the page
+— so the copy is deliberately unchanged. Choosing is yours.
 
-- **Make it real** — a written monthly deletion step would do it. Then #243's hedged
-  privacy wording can go back to promising 90 days flatly, and `/pricing` is already true.
-- **Soften the page** — state what is actually enforced, as the Privacy Policy now does.
-
-Cloud is off sale and behind a waitlist, so nothing is being sold on this claim today. But
-a waitlist signup is still a decision someone makes on it.
+One fact that bears on it, from the new gap note: **EU AI Act Article 19 requires logs for
+at least six months.** A customer with an Article 19 obligation could not discharge it
+with a 90-day retention period, whether or not it is enforced.
 
 ## Landed recently
 
-| # | date | what | confidence |
-|---|---|---|---|
-| #261 | 11-18 | `/account` shows the bundles someone bought | BY TEST |
-| #250 | 11-15 | Contact sends as email through the provider the policy names | BY TEST |
-| #243 | 11-15 | Privacy says which retention periods a system enforces | BY TEST |
-| #242 | 11-15 | Privacy describes the contact flow that happens | BY TEST |
-| #246 | 11-14 | Drop the withdrawn package's description, keep its refund clause | BY READ |
-| #245 | 11-14 | CI typechecks `packages/site`, which it never did | BY TEST |
-| #244 | 11-14 | Sign-in API stops calling a config gap a moment to wait | BY TEST |
-| #241 | 11-14 | Record a free first bundle, so "one per customer" is checkable | BY TEST |
-| #235 | 11-14 | Withdraw the 90-day evidence package from sale | BY READ |
-| #232 | 11-13 | The bundle sale cannot open until a payment can be recorded | BY READ |
+- **#270** (#260) — finished the Provenant rename. MIT licences now say "Lacre
+  contributors"; `LICENSE.commercial` says "Ascella Studios LLC" rather than "Lacre", which
+  is a deliberate deviation from the issue (a commercial licence is owned by a legal
+  entity). README/PRODUCT/AGENTS point at lacre.dev, the 404ing npm links are gone, and the
+  Pages root is now a redirect stub with the demo at `docs/demo.html`.
+- **#269** (#221) — gap note on the November 2026 agent-audit drafts. The authorizing
+  principal is the one real gap and it is the same gap in every document read.
+- **#268** (#256, #257) — robots, sitemap, canonicals and the raster icons.
+- **#266** (#255, #259) — the overclaim recast, with a sweep guard.
+- **#265** — cleared seven Next.js advisories and `source-map-js`, lockfile only.
+- **#264** (#254, part of #258) — the contact address, and the forms and prices that were
+  overpromising. `LEGAL.mailboxProvider` moved with the address, which #254 had not
+  anticipated: `frontierforge.tech` is on Microsoft 365 and `lacre.dev` is on Google, so
+  swapping the address alone would have left /privacy naming the wrong processor.
+- **#262** — the previous pass of this file.
 
-#235 and #246 are intact: the only "90-day" left on `/pricing` is the retention bullet
-above, not the withdrawn package. *VERIFIED LIVE.*
+Closed without code: **#229** (already done by #230), **#263** (does not reproduce — a
+nonexistent path returns 404, not 503), **#113** (the footer already names the entity),
+**#267** (a GitHub Pages "inactive" false positive — the deploy succeeded at 05:31:32 and
+was superseded 19 minutes later), **#253** (competitive research, deliberately not
+mirrored into a public repo).
 
 ## Open PRs
 
-| # | head | vs main | state | what it needs |
-|---|---|---|---|---|
-| #262 | this file | 0 behind | open, CI green locally | a merge, whenever |
-| #225 | `67fcbc4` | **behind 20, diverged** | draft **on purpose** | a rebase, and 1.0.0 published first |
-
-#225's docs say the packages are on npm. That is **false**: both return 404 on the
-registry. *VERIFIED LIVE.* The previous pass recorded #225 as "behind main 0" — that was
-**wrong when written**, since `main` has moved only one commit since, so it was already
-behind 19. Re-measure divergence from the API against the current `main`.
+- **#225, Prepare 1.0.1.** Blocked on a decision, not on work. Its own body says "merge
+  only after 1.0.0 is on npm. These docs say the packages are on npm, which is false until
+  then." Still true: both packages return **404** on the registry and `npm whoami` is not
+  logged in. *VERIFIED LIVE.* It now also conflicts with `main`, because #270 removed the
+  npm links on purpose. The right order is: publish, then land #225 immediately after.
+  The release rehearsal is clean — `release:dry` passes, `@lacre/cloud` is correctly
+  excluded as private, and the tarballs hold only LICENSE, README, bin and dist.
 
 ## Known stale or unverified
 
-- Whether the two `packages/site/migrations/` tables are applied to Neon: **unverified**.
-- **Advisories: quote the production number, not the total.** `pnpm audit --prod` reports
-  **3** — 1 high, 2 moderate. *VERIFIED BY TEST, re-run 2026-11-18.* The full `pnpm audit`
-  reports 18 including 3 criticals, but every critical is dev tooling (vitest, vite,
-  esbuild, tinypool) and reaches no user.
-- Never commit or publish `internal/`, `.env.local`, `.vercel/`, `~/.lacre`.
-- Run `pnpm run ci`, not `npm test`: the test command alone does not typecheck, and that
-  gap once let a deleted import pass tests locally and fail in CI.
-- **Watch the test count.** `main` is **1,578** plus 194 offline. #261's first attempt was
-  cut from an already-squashed branch and read 1,544 — a suite shrinking while tests were
-  being added was the only signal the base was wrong, and every check was green on it.
+- **`/account`'s behaviour is not verified live.** It is behind sign-in, which is shut.
+- **The two site migrations may or may not be applied to Neon.** Not checkable without
+  database access.
+- **`hello@lacre.dev` has not been sent a test message.** The domain is mail-enabled
+  (Google MX, Google SPF) and issue #254 records that mail to it lands in the
+  `hello@ascellastudios.com` mailbox, but nobody has confirmed delivery. It is now
+  published on /terms, /privacy, the footer, pricing and `security.txt`.
+- **The Terms text changed in #264**, so the **effective date may need to move**.
+  `effectiveDate` is an owner-supplied fact in `src/legal.ts` and was not invented.
+- **Divergence figures for #225 go stale immediately.** Re-measure from the API against
+  current `main` before acting on one.
