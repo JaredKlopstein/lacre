@@ -4,6 +4,7 @@ import { BRAND } from '../../src/brand';
 import { CodeBlock } from '../../src/code-block';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/verify' },
   title: 'Verify',
   description: `Check a ${BRAND.name} evidence bundle offline with the free MIT verifier. Verifying is never paywalled.`,
 };

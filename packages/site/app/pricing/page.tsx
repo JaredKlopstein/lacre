@@ -22,6 +22,7 @@ import { BUNDLE_WAITLIST_NEED, WAITLIST_NEED, WaitlistForm } from './waitlist-fo
 import { WAITLIST_ID, WaitlistOpen } from './waitlist-open';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/pricing' },
   title: 'Pricing',
   description: `${BRAND.name} pricing: Core is free, evidence bundles are priced each, Cloud is in early access, Enterprise is by contract.`,
 };

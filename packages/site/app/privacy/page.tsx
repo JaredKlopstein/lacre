@@ -6,6 +6,7 @@ import { LEGAL, TERMS_PATH, fact } from '../../src/legal';
 import { LegalNotice } from '../../src/legal-notice';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/privacy' },
   title: 'Privacy',
   description: `What personal data ${BRAND.name} collects, why, who processes it and how long it is kept.`,
 };

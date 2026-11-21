@@ -145,7 +145,10 @@ describe('home page', () => {
   });
 
   it('exports its own meta description, leaving the layout’s unchanged', () => {
-    expect(metadata.description).toContain('tamper-evident receipts for AI agents');
+    // It must not simply repeat the title, which is what it used to do (#256):
+    // the tagline is already in the title through the layout's template.
+    expect(metadata.description).toContain('For teams running AI agents');
+    expect(metadata.description).not.toBe(layoutMetadata.description);
     expect(layoutMetadata.description).toBe(`${BRAND.name}: ${BRAND.tagline}.`);
   });
 
