@@ -12,6 +12,7 @@ const CLI = BRAND.name.toLowerCase();
 const CLOUD_EARLY = `Cloud (${EARLY_ACCESS_LABEL.toLowerCase()}, not available yet)`;
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/how-it-works' },
   title: 'How it works',
   description: `How ${BRAND.name} turns agent actions into evidence anyone can verify offline.`,
 };
@@ -51,8 +52,8 @@ export default function HowItWorksPage() {
       <section>
         <h1>How it works</h1>
         <p>
-          From one agent action to evidence a third party can check without trusting the operator,
-          in five steps.
+          From one agent action to evidence a third party can check for signs of later change, without
+          access to the operator’s systems, in five steps.
         </p>
       </section>
       <figure>
