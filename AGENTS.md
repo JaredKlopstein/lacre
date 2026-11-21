@@ -23,9 +23,12 @@ worth", and [ADR 0003](docs/adr/0003-anchoring.md)).
 
 - GitHub: https://github.com/JaredKlopstein/lacre
 - pnpm workspace (`packages/*`), TypeScript, Vitest. Node >= 22.5.0, pnpm 11.15.1.
-- Published packages: `@lacre/core`, `@lacre/verifier` (both MIT).
+- `@lacre/core` and `@lacre/verifier` (both MIT) are the packages meant for npm.
+  Neither is published yet; the README tells readers to run from source.
   `@lacre/cloud` is private and commercial.
-- ADRs: `docs/adr/`. Landing page source: `docs/index.html`.
+- Site: https://lacre.dev, from `packages/site`.
+- ADRs: `docs/adr/`. Older docs landing: `docs/index.html`, a stub pointing at
+  lacre.dev, with the demo at `docs/demo.html`.
 
 ## Rules
 
@@ -76,8 +79,9 @@ works with no network and no code from core or cloud). CI runs this on Node
 
 - npm publish of `@lacre/core` and `@lacre/verifier` via
   `pnpm run release` (`pnpm run release:dry` to rehearse). Human only.
-- Landing page at https://jaredklopstein.github.io/lacre, served by
-  GitHub Pages from `docs/`.
+- Site at https://lacre.dev, deployed by Vercel from `main`.
+- Older docs landing at https://jaredklopstein.github.io/lacre, served by
+  GitHub Pages from `docs/`, which now sends visitors to lacre.dev.
 
 ## Monitoring
 

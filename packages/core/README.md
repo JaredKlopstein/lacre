@@ -2,9 +2,9 @@
 
 **Tamper-evident receipts for autonomous agents.**
 
-[jaredklopstein.github.io/lacre](https://jaredklopstein.github.io/lacre) ·
-[`@lacre/core`](https://www.npmjs.com/package/@lacre/core) ·
-[`@lacre/verifier`](https://www.npmjs.com/package/@lacre/verifier)
+[lacre.dev](https://lacre.dev) ·
+[Getting started](https://github.com/JaredKlopstein/lacre/blob/main/docs/getting-started.md) ·
+`@lacre/core` and `@lacre/verifier` — not published to npm yet; run from source
 
 Agents write structured receipts of every consequential action they take.
 Lacre hash-chains and signs them, so anyone can later prove the record was

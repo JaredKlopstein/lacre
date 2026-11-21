@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 
 /**
- * The GitHub Pages landing page (docs/index.html) and the policy beside it
+ * The GitHub Pages demo page (docs/demo.html) and the policy beside it
  * (docs/_headers) must not make a visitor's browser talk to anyone but the host
  * serving the page.
  *
@@ -22,7 +22,7 @@ import { readFileSync, existsSync } from 'node:fs';
  */
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
-const LANDING = '../../../docs/index.html';
+const LANDING = '../../../docs/demo.html';
 const HEADERS = '../../../docs/_headers';
 const page = read(LANDING);
 
@@ -30,11 +30,15 @@ const page = read(LANDING);
  * Every absolute URL the page makes the browser fetch without the visitor
  * choosing to: a stylesheet or preconnect in <link>, a script or image src, and
  * any url() inside the page's CSS. An <a href> is not one of these -- following
- * a link is the visitor's own act -- so those are left out on purpose.
+ * a link is the visitor's own act -- so those are left out on purpose. Nor is
+ * rel="canonical", which is a statement to a crawler about which URL this page
+ * is; nothing fetches it, and the demo page points its own at this host.
  */
 function subresourceHosts(html: string): string[] {
   const urls = [
-    ...[...html.matchAll(/<link\b[^>]*\bhref\s*=\s*"([^"]+)"/gi)].map((m) => m[1]!),
+    ...[...html.matchAll(/<link\b[^>]*\bhref\s*=\s*"([^"]+)"/gi)]
+      .filter((m) => !/\brel\s*=\s*"canonical"/i.test(m[0]))
+      .map((m) => m[1]!),
     ...[...html.matchAll(/<(?:script|img|iframe|source|video|audio)\b[^>]*\bsrc\s*=\s*"([^"]+)"/gi)].map((m) => m[1]!),
     ...[...html.matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/gi)].map((m) => m[1]!),
   ];
@@ -66,7 +70,7 @@ describe('the Pages landing page talks to nobody but its own host', () => {
   it('declares a policy, in both copies, that permits no external host for anything', () => {
     expect(metaCsp).toBeDefined();
     expect(headerCsp).toBeDefined();
-    for (const [where, csp] of [['index.html', metaCsp!], ['_headers', headerCsp!]] as const) {
+    for (const [where, csp] of [['demo.html', metaCsp!], ['_headers', headerCsp!]] as const) {
       for (const [name, sources] of directives(csp)) {
         expect(hostSources(sources), `${where}: ${name}`).toEqual([]);
       }

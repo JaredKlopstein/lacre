@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- The root of this host is a redirect stub whose canonical is https://lacre.dev/,
+     so it is not listed: a sitemap entry for a page that canonicalises elsewhere
+     asks a crawler to index something it has been told to ignore. The demo is the
+     one page here with content of its own. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://jaredklopstein.github.io/lacre/</loc>
+    <loc>https://jaredklopstein.github.io/lacre/demo.html</loc>
     <changefreq>monthly</changefreq>
-    <priority>1.0</priority>
+    <priority>0.5</priority>
   </url>
 </urlset>
