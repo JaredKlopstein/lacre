@@ -150,7 +150,7 @@ describe('pricing cards', () => {
   });
 
   it('matches the bundle and Cloud cards on the Pages site', async () => {
-    const pages = readFileSync(new URL('../../../docs/index.html', import.meta.url), 'utf8');
+    const pages = readFileSync(new URL('../../../docs/demo.html', import.meta.url), 'utf8');
     const pagesCard = (tier: string) => {
       const body = new RegExp(`data-tier="${tier}">([\\s\\S]*?)</ul>`).exec(pages)?.[1] ?? '';
       const plain = (s: string) => unescape(s.replace(/&nbsp;/g, ' ')).trim();

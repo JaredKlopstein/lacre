@@ -9,7 +9,8 @@ agents are in [AGENTS.md](AGENTS.md).
 - Name: Lacre
 - Tagline: tamper-evident receipts for autonomous agents
 - Repository: https://github.com/JaredKlopstein/lacre
-- Site: https://jaredklopstein.github.io/lacre
+- Site: https://lacre.dev
+- Older docs landing: https://jaredklopstein.github.io/lacre (now sends visitors to lacre.dev)
 - Packages: `@lacre/core` (MIT), `@lacre/verifier` (MIT),
   `@lacre/cloud` (commercial, private, not published)
 - Owner: Jared Klopstein
@@ -33,8 +34,12 @@ working; see README "Status" and `packages/cloud/README.md`.
 ## Deployment
 
 - npm: `pnpm run release` publishes `core` and `verifier`. Human action only.
-- Landing page: GitHub Pages from `docs/` (`docs/index.html`, `docs/.nojekyll`).
-- No other deployment target is described in the repository.
+  Neither is on npm yet.
+- Site: lacre.dev, the Next.js app in `packages/site`, deployed by Vercel from
+  `main`.
+- Older docs landing: GitHub Pages from `docs/`. `docs/index.html` is now a stub
+  that sends visitors to lacre.dev; the interactive demo lives at
+  `docs/demo.html`.
 
 ## Monitoring
 

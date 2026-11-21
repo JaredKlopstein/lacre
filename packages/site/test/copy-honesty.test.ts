@@ -63,6 +63,7 @@ describe('the overclaims legal review removed stay removed', () => {
     'packages/site/src/plans.ts',
     'packages/site/src/proof-table.ts',
     'docs/index.html',
+    'docs/demo.html',
   ] as const;
 
   /** Shipped text only: whole-line // and * and <!-- comments dropped. */
@@ -107,9 +108,14 @@ describe('the overclaims legal review removed stay removed', () => {
     const exhibit = shipped('packages/site/src/exhibit-chain.tsx');
     expect(exhibit).toContain('Signatures and the timestamp are not checked on this page.');
 
-    const pages = shipped('docs/index.html');
-    expect(pages).toContain('Lacre \u2014 tamper-evident receipts for what your agents report');
-    expect(pages).toContain('for signs that a record was changed, removed or reordered after it was signed');
+    // The stub at the Pages root carries the product title; the demo page beside
+     // it is titled as what it is, and carries the recast body copy.
+    expect(shipped('docs/index.html')).toContain(
+      'Lacre \u2014 tamper-evident receipts for what your agents report',
+    );
+    expect(shipped('docs/demo.html')).toContain(
+      'for signs that a record was changed, removed or reordered after it was signed',
+    );
   });
 });
 

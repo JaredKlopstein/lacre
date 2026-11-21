@@ -27,8 +27,8 @@ const nodeSha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest(
 const { anchor, receipts } = EXHIBIT_DATA;
 
 describe('Exhibit A data', () => {
-  it('is byte-identical to the DATA constant on the Pages landing page', () => {
-    const pages = /^const DATA = (.*);$/m.exec(read('../../../docs/index.html'))?.[1];
+  it('is byte-identical to the DATA constant on the Pages demo page', () => {
+    const pages = /^const DATA = (.*);$/m.exec(read('../../../docs/demo.html'))?.[1];
     const ours = /^export const EXHIBIT_DATA: ExhibitData = (.*);$/m.exec(read('../src/exhibit-data.ts'))?.[1];
     expect(pages).toBeDefined();
     expect(ours).toBe(pages);
