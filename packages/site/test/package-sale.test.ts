@@ -42,8 +42,8 @@ describe('the evidence bundle price', () => {
   });
 
   it('says how to get the free first bundle: one per customer, by email, not through checkout, which charges', () => {
-    expect(firstBundleClaim('contact@frontierforge.tech')).toBe(
-      'Your first bundle is free, one per customer: request it by email at contact@frontierforge.tech instead of ' +
+    expect(firstBundleClaim('hello@lacre.dev')).toBe(
+      'Your first bundle is free, one per customer: request it by email at hello@lacre.dev instead of ' +
         'checking out, and we make it by hand. After that, $5 each',
     );
     // Before the owner's contact address is set, it points at the contact form instead.

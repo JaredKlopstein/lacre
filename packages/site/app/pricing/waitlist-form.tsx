@@ -126,7 +126,13 @@ interface Shown {
   readonly fields: readonly WaitlistField[];
 }
 
-export function WaitlistForm({ need = WAITLIST_NEED }: { need?: string }) {
+/**
+ * `closed` is for the deployment that cannot forward a submission anywhere: the
+ * route would answer `not_configured`, so the button stays disabled instead of
+ * inviting an entry that goes nowhere. It is a separate reason from `!ready`,
+ * which is only ever about hydration and clears by itself.
+ */
+export function WaitlistForm({ need = WAITLIST_NEED, closed = false }: { need?: string; closed?: boolean }) {
   // Submitting is only possible once hydrated, so the form never falls back to
   // a native submission that would put the fields in the page URL.
   const [ready, setReady] = useState(false);
@@ -235,7 +241,7 @@ export function WaitlistForm({ need = WAITLIST_NEED }: { need?: string }) {
         />
       </p>
       <p>
-        <button type="submit" disabled={!ready} aria-disabled={sending || undefined}>
+        <button type="submit" disabled={!ready || closed} aria-disabled={sending || undefined}>
           {sending ? 'Sending…' : 'Join the list'}
         </button>
       </p>

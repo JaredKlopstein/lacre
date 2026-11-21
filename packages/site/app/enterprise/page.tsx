@@ -4,6 +4,8 @@ import type { ReactNode } from 'react';
 import { BRAND } from '../../src/brand';
 import { CONTACT_OUTCOMES, CONTACT_PATH, FLEET_SIZES, HONEYPOT_FIELD, type ContactOutcome } from '../../src/contact';
 import { AnnounceOutcome, KeepFields } from '../../src/form-outcome';
+import { contactForwarding } from '../../src/contact-forwarding';
+import { LEGAL } from '../../src/legal';
 
 const TITLE = 'Enterprise';
 const METADATA: Metadata = {
@@ -116,8 +118,22 @@ export default async function EnterprisePage({ searchParams }: { searchParams: P
         <h1>Enterprise</h1>
         <p>
           For teams running agent fleets whose terms do not fit the Cloud plan. Enterprise is agreed
-          by contract, not bought through checkout, and it has no listed price. Tell us what you
-          need below. We reply within two business days.
+          by contract, not bought through checkout, and it has no listed price.{' '}
+          {/*
+            The form below posts to the contact route, which sends nothing while the
+            EMAIL_* variables are unset. Promising a reply in two business days to a
+            message that is never delivered is the overclaim; the address is given
+            instead, and the promise returns by itself once sending is configured.
+          */}
+          {contactForwarding() ? (
+            'Tell us what you need below. We reply within two business days.'
+          ) : (
+            <>
+              {`This form can't send messages yet. Email us at `}
+              <a href={`mailto:${LEGAL.contactEmail}`}>{LEGAL.contactEmail}</a>
+              {' and we reply within two business days.'}
+            </>
+          )}
         </p>
         <ul>
           {TERMS.map((term) => (
