@@ -20,7 +20,17 @@ import { StandardsStrip } from '../src/standards-strip';
 import styles from '../src/hero.module.css';
 
 export const metadata: Metadata = {
-  description: `${BRAND.name}: tamper-evident receipts for AI agents.`,
+  /*
+   * The description said only what the title says. It now names who the page is
+   * for and what they get, in the page's own words: the eyebrow line, the first
+   * proof point and the anchoring one. Nothing here is a claim the page does not
+   * already make (#256).
+   */
+  description:
+    'For teams running AI agents that touch money, mail or customer data. Every consequential action gets a ' +
+    'signed, hash-chained receipt. Anchor the chain with an RFC 3161 timestamp, and anyone with the bundle can ' +
+    'check offline that the record has not changed since.',
+  alternates: { canonical: '/' },
 };
 
 const PROOF_POINTS = [

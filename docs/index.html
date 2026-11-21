@@ -21,6 +21,11 @@
 <!-- No canonical link and no link to a main site: no Lacre site deployment is
      serving yet, so this page is its own canonical. Add both back, together,
      once a canonical host is chosen and serving; test/site.test.ts pins this. -->
+<!-- Icons, generated from packages/site/app/icon.svg by scripts/generate-icons.mjs
+     and byte-identical to the ones the app serves (#257). Both are served from
+     this directory: no third-party host, same as the fonts below. -->
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <!-- IBM Plex, served from this directory. Nothing on this page requests a
      third party: a visitor's IP reaches no host but the one serving the page.
      The files are the latin subsets Google Fonts serves, fetched once and

@@ -8,6 +8,7 @@ import { CLOUD_MAX_ANCHOR_MINUTES, EARLY_ACCESS_LABEL } from '../../src/plans';
 import { PROOF_TABLE } from '../../src/proof-table';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/security' },
   title: 'Security',
   description: `The standards ${BRAND.name} is built on, the open-core boundary, what a self-hosted chain does and does not prove, how agent keys are handled, and how to report a vulnerability.`,
 };

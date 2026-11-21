@@ -12,6 +12,7 @@ const CLI = BRAND.name.toLowerCase();
 const CLOUD_EARLY = `Cloud (${EARLY_ACCESS_LABEL.toLowerCase()}, not available yet)`;
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/how-it-works' },
   title: 'How it works',
   description: `How ${BRAND.name} turns agent actions into evidence anyone can verify offline.`,
 };

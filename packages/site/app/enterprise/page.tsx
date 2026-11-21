@@ -9,6 +9,10 @@ import { LEGAL } from '../../src/legal';
 
 const TITLE = 'Enterprise';
 const METADATA: Metadata = {
+  // generateMetadata only ever varies the title, so the canonical set here
+  // survives every outcome redirect: /enterprise?contact=sent must not become a
+  // second indexable URL.
+  alternates: { canonical: '/enterprise' },
   title: TITLE,
   description: `Talk to the ${BRAND.name} team about Enterprise: retention, anchoring cadence and volume set by contract.`,
 };

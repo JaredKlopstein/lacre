@@ -6,6 +6,7 @@ import { LegalNotice } from '../../src/legal-notice';
 import { FREE_FIRST_BUNDLES, NINETY_DAY_PACKAGE, OFF_SALE_PLANS } from '../../src/plans';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/terms' },
   title: 'Terms',
   description: `The terms for using ${BRAND.name}, its paid evidence bundles and the website.`,
 };
