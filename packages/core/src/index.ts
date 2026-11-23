@@ -57,6 +57,14 @@ export { runCli } from './adapters/cli.js';
 export {
   wrapMcpClient, type WrapMcpClientOptions, type McpToolClient, type McpCallToolParams,
 } from './adapters/mcp.js';
+// The same tool calls, recorded from outside the agent instead of inside it.
+export {
+  createMcpGateway, type McpGateway, type McpGatewayOptions,
+} from './gateway/mcp-gateway.js';
+export {
+  runMcpGatewayCli, openGateway, parseGatewayArgs, lineSplitter,
+  type GatewayCliOptions, type GatewayRuntime,
+} from './gateway/stdio.js';
 export { loadKeypair, saveKeypair } from './actions/identity.js';
 
 // Importing these registers them in the action registry.

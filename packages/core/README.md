@@ -62,8 +62,24 @@ but `POST /receipts` is a documented "not implemented"; and Stripe billing
 only in Stripe test mode. Details in
 [packages/cloud/README.md](packages/cloud/README.md).
 
-Shipped in core: an MCP client wrapper (`wrapMcpClient`) that records one chained
-receipt per `tools/call` ([ADR 0004](docs/adr/0004-tool-call-receipts.md)).
+Shipped in core, two ways to record an MCP tool call
+([ADR 0004](docs/adr/0004-tool-call-receipts.md)):
+
+- `wrapMcpClient` wraps the agent's own client. It runs **inside** the agent and
+  signs with a key the agent holds, so the receipt says what the agent reported
+  about itself (`issuer_kind: sdk`).
+- `lacre-mcp-gateway` is an MCP proxy that runs **outside** it
+  ([ADR 0006](docs/adr/0006-gateway-recorder.md)). The agent launches the gateway
+  instead of the server, the gateway launches the server, and the signing key
+  stays in a process the agent does not control (`issuer_kind: gateway`,
+  `provenance_class: observed`). It forwards every message unchanged, records one
+  receipt per completed call, and records a call that was issued and never came
+  back — which an in-agent recorder, dying with the agent, cannot.
+
+  The gateway **does not decide**: every call is forwarded, nothing is refused.
+  It sees only traffic routed through it, so an agent holding its own API keys
+  can call a service directly and the gateway will never know. A receipt's
+  absence proves nothing.
 
 Not built yet: contracts and approvals (Phase 3); leases and fencing tokens
 (Phase 4); a generated MCP server adapter (Phase 5).
