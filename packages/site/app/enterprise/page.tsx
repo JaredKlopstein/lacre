@@ -5,7 +5,7 @@ import { BRAND } from '../../src/brand';
 import { CONTACT_OUTCOMES, CONTACT_PATH, FLEET_SIZES, HONEYPOT_FIELD, type ContactOutcome } from '../../src/contact';
 import { AnnounceOutcome, KeepFields } from '../../src/form-outcome';
 import { contactForwarding } from '../../src/contact-forwarding';
-import { LEGAL } from '../../src/legal';
+import { HowToHear } from '../../src/how-to-hear';
 
 const TITLE = 'Enterprise';
 const METADATA: Metadata = {
@@ -133,9 +133,9 @@ export default async function EnterprisePage({ searchParams }: { searchParams: P
             'Tell us what you need below. We reply within two business days.'
           ) : (
             <>
-              {`This form can't send messages yet. Email us at `}
-              <a href={`mailto:${LEGAL.contactEmail}`}>{LEGAL.contactEmail}</a>
-              {' and we reply within two business days.'}
+              {`This form can't send messages yet. To reach us, `}
+              <HowToHear subject="Enterprise" purpose="reach" />
+              {'.'}
             </>
           )}
         </p>

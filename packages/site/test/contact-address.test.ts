@@ -154,7 +154,7 @@ describe('the Enterprise form says what it can actually do', () => {
     sendingOff();
     const html = unescape(await enterprise());
     expect(html).toContain("This form can't send messages yet.");
-    expect(html).toContain('Email us at hello@lacre.dev and we reply within two business days.');
+    expect(html).toContain('To reach us, email hello@lacre.dev with "Enterprise" in the subject');
   });
 
   it('promises the reply once a send would reach someone', async () => {

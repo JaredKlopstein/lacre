@@ -242,7 +242,8 @@ export function WaitlistForm({ need = WAITLIST_NEED, closed = false }: { need?: 
       </p>
       <p>
         <button type="submit" disabled={!ready || closed} aria-disabled={sending || undefined}>
-          {sending ? 'Sending…' : 'Join the list'}
+          {/* A disabled button still has to say why it is disabled, not invite the click. */}
+          {closed ? 'Sign-ups are closed' : sending ? 'Sending…' : 'Join the list'}
         </button>
       </p>
       <div ref={resultsRef}>

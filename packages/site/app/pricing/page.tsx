@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { BRAND } from '../../src/brand';
 import { bundleSale } from '../../src/bundle-sale';
 import { contactForwarding } from '../../src/contact-forwarding';
-import { LEGAL } from '../../src/legal';
+import { HowToHear } from '../../src/how-to-hear';
 import {
   BILLING_PARAM,
   BILLINGS,
@@ -143,7 +143,10 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       </section>
       {/* Its own section under the cards, so opening it never stretches the grid. */}
       <section id={WAITLIST_ID} aria-labelledby={WAITLIST_HEADING_ID}>
-        <h2 id={WAITLIST_HEADING_ID}>Join the early access list</h2>
+        {/* The heading promises joining too, so it follows the same gate as the body. */}
+        <h2 id={WAITLIST_HEADING_ID}>
+          {forwarding ? 'Join the early access list' : 'When bundles and Cloud open'}
+        </h2>
         {/*
           An entry is emailed through the contact route and stored nowhere, so while
           this deployment cannot send, "we will email you when they open" is a promise
@@ -161,10 +164,8 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
           </p>
         ) : (
           <p>
-            {`The waitlist isn't taking sign-ups yet. To hear when bundles and Cloud open, email `}
-            <a href={`mailto:${LEGAL.contactEmail}`}>{LEGAL.contactEmail}</a>
-            {` with "Waitlist" in the subject, or watch the `}
-            <a href={BRAND.repository}>GitHub repository</a>.
+            {`The waitlist isn't taking sign-ups yet. To hear when bundles and Cloud open, `}
+            <HowToHear subject="Waitlist" />.
           </p>
         )}
         <WaitlistForm need={sale.open ? WAITLIST_NEED : BUNDLE_WAITLIST_NEED} closed={!forwarding} />

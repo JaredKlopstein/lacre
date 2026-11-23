@@ -14,6 +14,8 @@ import {
   pricingAnnualOverageDisclosure,
 } from '../src/plans.js';
 import { fillLegalFacts, stubCheckoutEnv, stubSignInEnv } from './sale-env.js';
+import HomePage from '../app/page.js';
+import { contactForwarding } from '../src/contact-forwarding.js';
 
 // The checkout page reads the request (to stay dynamic); no cookie, so no account.
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
@@ -116,6 +118,70 @@ describe('the overclaims legal review removed stay removed', () => {
     expect(shipped('docs/demo.html')).toContain(
       'for signs that a record was changed, removed or reordered after it was signed',
     );
+  });
+});
+
+/**
+ * Nothing invites a visitor onto a list that cannot take them (#264 follow-up).
+ *
+ * The waitlist posts to the contact route, which sends nothing while the EMAIL_*
+ * variables are unset. #264 made /pricing and /enterprise say so, and missed
+ * /checkout, which went on promising "Join the early access list and we will
+ * email you when bundles open" -- an invitation to do something impossible,
+ * on the page a visitor reaches when they try to buy.
+ *
+ * So the guard is a sweep rather than one more assertion on one more page: the
+ * defect was never specific to a page, and patching the third surface by hand
+ * would leave the fourth to be found by a customer.
+ *
+ * A *link* to the waitlist is fine and deliberately allowed. It lands on copy
+ * that says to email instead, which is a real next step. What may not survive is
+ * a promise that joining works.
+ */
+describe('no page invites a visitor onto a list that cannot take them', () => {
+  const EMAIL_KEYS = ['EMAIL_API_URL', 'EMAIL_API_KEY', 'EMAIL_FROM'] as const;
+
+  /** The promises that are false exactly when a submission reaches nobody. */
+  const PROMISES: readonly (readonly [RegExp, string])[] = [
+    [/we will email you/i, 'promises an email the deployment cannot send'],
+    [/leave your details/i, 'invites details nothing will store or forward'],
+    [/\bjoin the (early access )?list\b/i, 'invites joining a list that takes no entries'],
+    [/\bjoin the waitlist\b/i, 'invites joining a list that takes no entries'],
+  ];
+
+  async function renderedWithSendingOff(): Promise<Record<string, string>> {
+    const saved = EMAIL_KEYS.map((key) => [key, process.env[key]] as const);
+    for (const key of EMAIL_KEYS) delete process.env[key];
+    try {
+      expect(contactForwarding(), 'this suite only means anything while sending is off').toBe(false);
+      return {
+        checkout: renderToStaticMarkup(await CheckoutPage({ searchParams: Promise.resolve({}) })),
+        pricing: renderToStaticMarkup(await PricingPage({ searchParams: Promise.resolve({}) })),
+        home: renderToStaticMarkup(HomePage()),
+      };
+    } finally {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  }
+
+  it('makes no promise about the waitlist while nothing can be sent', async () => {
+    const pages = await renderedWithSendingOff();
+    for (const [name, html] of Object.entries(pages)) {
+      const body = text(html);
+      for (const [pattern, why] of PROMISES) {
+        expect(pattern.test(body), `/${name} ${why}: ${pattern}`).toBe(false);
+      }
+    }
+  });
+
+  it('still points somewhere a visitor can actually act', async () => {
+    const pages = await renderedWithSendingOff();
+    // The honest alternative, on the two pages that raise the subject at all.
+    expect(text(pages.pricing!)).toContain('hello@lacre.dev');
+    expect(text(pages.checkout!)).toContain('hello@lacre.dev');
   });
 });
 
