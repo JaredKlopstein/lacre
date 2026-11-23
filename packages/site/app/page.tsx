@@ -160,7 +160,7 @@ export default function HomePage() {
         {OFF_SALE_PLANS.has('cloud') ? (
           <p>
             <strong>Cloud: {EARLY_ACCESS_LABEL.toLowerCase()}.</strong> Continuous anchoring is planned, not available
-            yet. <Link href={WAITLIST_HREF}>Join the waitlist</Link>.
+            yet. <Link href={WAITLIST_HREF}>Tell me when Cloud opens</Link>.
           </p>
         ) : null}
         <p className={styles.ctas}>

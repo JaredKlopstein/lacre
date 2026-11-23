@@ -123,7 +123,9 @@ const ON_SALE_CTAS: Record<CardId, CallToAction> = {
   enterprise: { label: 'Contact the team', href: '/enterprise' },
 };
 
-const WAITLIST_CTA: CallToAction = { label: 'Join the waitlist', href: WAITLIST_HREF };
+// Asks to be told, rather than inviting a join that may not be possible. True in
+// both states, so it needs no sale or sending gate of its own.
+const WAITLIST_CTA: CallToAction = { label: 'Tell me when Cloud opens', href: WAITLIST_HREF };
 const BUNDLE_SOON_CTA: CallToAction = { label: 'Tell me when bundles open', href: WAITLIST_HREF };
 
 /** A card's button, from its off-sale flag first and its id second. */

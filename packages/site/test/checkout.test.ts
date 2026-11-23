@@ -484,7 +484,14 @@ describe('checkout page while bundles cannot be bought here (persona review: Mar
       const html = await render();
       expect(html).toContain('<section data-sale="closed"><h1>Checkout</h1><h2>Bundles open soon</h2>');
       expect(html).toContain('Checkout is not open yet, so nothing can be bought or charged here today.');
-      expect(html).toContain('<a href="/pricing#waitlist">Join the early access list</a>');
+      // The legal facts are cleared here, so there is no contact address to offer:
+      // the page must point at the repository rather than publish "mailto:null".
+      // React escapes the apostrophe in the markup, so match either side of it.
+      expect(html).toContain('The early access list isn');
+      expect(html).toContain('taking sign-ups yet.');
+      expect(html).toContain('watch the <a href="https://github.com/JaredKlopstein/lacre">GitHub repository</a>');
+      expect(html).not.toContain('mailto:null');
+      expect(html).not.toContain('we will email you');
       expect(html).not.toMatch(/<form\b|Continue to payment|\/signup/);
     }
   });

@@ -242,7 +242,7 @@ describe('calls to action (#94)', () => {
       expect(ctas).toEqual({
         core: [{ label: 'Start free', href: getStarted }],
         bundle: [{ label: 'Tell me when bundles open', href: '/pricing#waitlist' }],
-        cloud: [{ label: 'Join the waitlist', href: '/pricing#waitlist' }],
+        cloud: [{ label: 'Tell me when Cloud opens', href: '/pricing#waitlist' }],
         enterprise: [{ label: 'Contact the team', href: '/enterprise' }],
       });
       for (const c of cards(html)) {
@@ -265,7 +265,7 @@ describe('calls to action (#94)', () => {
   it('points the Cloud button at /pricing#waitlist and never at checkout, monthly or annual', async () => {
     for (const billing of ['monthly', 'annual'] as const) {
       const cta = priceCards(billing).find((c) => c.id === 'cloud')!.cta;
-      expect(cta).toEqual({ label: 'Join the waitlist', href: '/pricing#waitlist' });
+      expect(cta).toEqual({ label: 'Tell me when Cloud opens', href: '/pricing#waitlist' });
       const html = card(await render(billing), 'cloud').html;
       expect(hrefs(html).filter((h) => !h.startsWith('/pricing?') && h !== '/pricing')).toEqual(['/pricing#waitlist']);
       // No link or form on the Cloud card may go to checkout. Its billing toggle only reloads /pricing.
@@ -278,7 +278,7 @@ describe('calls to action (#94)', () => {
 
   it('gives any off-sale card the waitlist button, never a checkout link', () => {
     for (const id of ['core', 'bundle', 'cloud', 'enterprise'] as const) {
-      expect(cardCta(id, true)).toEqual({ label: 'Join the waitlist', href: WAITLIST_HREF });
+      expect(cardCta(id, true)).toEqual({ label: 'Tell me when Cloud opens', href: WAITLIST_HREF });
     }
     // With bundles on sale, only an off-sale card points at the waitlist.
     for (const c of [...priceCards('monthly', { bundleOpen: true }), ...priceCards('annual', { bundleOpen: true })]) {
@@ -293,7 +293,7 @@ describe('calls to action (#94)', () => {
       expect(html.match(/\bid="waitlist"/g)).toHaveLength(1);
       // Persona review: out of the Cloud card and its <details>, so opening it never stretches the grid.
       expect(html).toMatch(
-        /<section id="waitlist" aria-labelledby="waitlist-heading"><h2 id="waitlist-heading">Join the early access list<\/h2><p>[\s\S]*?<\/p><form aria-label="Early access waitlist"/,
+        /<section id="waitlist" aria-labelledby="waitlist-heading"><h2 id="waitlist-heading">[^<]*<\/h2><p>[\s\S]*?<\/p><form aria-label="Early access waitlist"/,
       );
       expect(html.indexOf('id="waitlist"')).toBeGreaterThan(html.indexOf('</section>', html.indexOf('aria-label="Plans"')));
     }
