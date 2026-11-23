@@ -1,15 +1,16 @@
 # PROGRESS — Lacre
 
-Updated: 2026-11-21 · `main` at `32c4f18` · verified against origin: **yes**
+Updated: 2026-11-23 · `main` at `caa7da1` · verified against origin: **yes**
 Checkout when written: on `main`, 0 behind `origin/main`.
 
 Every claim below carries how it was checked. Re-check before acting. This file has
 twice carried entries that were wrong rather than merely stale, so treat it as a
 starting hypothesis.
 
-Seven PRs landed on 20–21 November (#262, #264, #265, #266, #268, #269, #270) and nine
-issues closed. The backlog is down to **one open PR and two open issues**, both of which
-need a decision from Jared rather than more work.
+Nine PRs landed on 20–23 November (#262, #264, #265, #266, #268, #269, #270, #273, #275)
+and nine issues closed. The backlog is **one open PR and three open issues**; the PR and two
+of the issues need a decision from Jared rather than more work, and the third is the
+roadmap.
 
 ## What "live" means for this product
 
@@ -42,7 +43,19 @@ verifier tests, which run with no network and no code from core or cloud.*
   and the figure reads "Planned: $49/mo". *VERIFIED LIVE.*
 - **No known dependency advisories.** `pnpm audit --prod` → "No known vulnerabilities
   found", down from 8 (#265). *VERIFIED LOCALLY on `main`.*
-- `pnpm run ci` on `main`: **1,613 tests + 194 offline**, green. *VERIFIED LOCALLY on the
+- **Tool calls can be recorded from outside the agent** (#273). `lacre-mcp-gateway` is an
+  MCP proxy that keeps the signing key in its own process and writes
+  `issuer_kind: gateway`. Until it landed, that value was defined in ADR 0004 and reachable
+  by no code path. *VERIFIED BY TEST, end to end through the real binary against an MCP
+  server over a pipe, and the shipped `--help` run from a clean build.*
+- **Nothing invites a visitor onto a list that cannot take them** (#275). `/checkout` was
+  still promising "Join the early access list and we will email you when bundles open"
+  while the list could take nobody. A sweep over every public page now fails CI on any such
+  promise. *VERIFIED LIVE: `/checkout` now reads "The early access list isn't taking sign-ups
+  yet. To hear when bundles open, email hello@lacre.dev…", `/pricing` shows "When bundles and
+  Cloud open", "Tell me when Cloud opens" and a button reading "Sign-ups are closed", and
+  `mailto:null` appears nowhere.*
+- `pnpm run ci` on `main`: **1,643 tests + 194 offline**, green. *VERIFIED LOCALLY on the
   merge commit, not on a branch.*
 
 ## Production environment
@@ -116,6 +129,11 @@ with a 90-day retention period, whether or not it is enforced.
 
 ## Landed recently
 
+- **#275** — stopped `/checkout` inviting visitors onto a shut waitlist, and fixed a latent
+  bug from #264: three pages interpolated `LEGAL.contactEmail` into a `mailto:` without
+  checking it, and would have published `mailto:null` whenever the legal facts were
+  incomplete. `src/how-to-hear.tsx` owns that decision once now.
+- **#273** — the gateway recorder, with [ADR 0006](docs/adr/0006-gateway-recorder.md).
 - **#270** (#260) — finished the Provenant rename. MIT licences now say "Lacre
   contributors"; `LICENSE.commercial` says "Ascella Studios LLC" rather than "Lacre", which
   is a deliberate deviation from the issue (a commercial licence is owned by a legal
@@ -137,6 +155,21 @@ nonexistent path returns 404, not 503), **#113** (the footer already names the e
 **#267** (a GitHub Pages "inactive" false positive — the deploy succeeded at 05:31:32 and
 was superseded 19 minutes later), **#253** (competitive research, deliberately not
 mirrored into a public repo).
+
+## The plan from here
+
+**Issue #274** is the single roadmap: Phase 1 (record outside the agent) is done in #273;
+Phases 2–5 are contracts and approvals, the authorizing principal, leases and fencing
+tokens, and collector ingestion. It is built on one finding worth repeating here: the
+receipt schema already declares `contract_id`, `contract_result`, `approval_id`, `lease_id`
+and `fencing_token`, and **`approval_id` and `fencing_token` are written by nothing outside
+the schema file**. The plan is to make the existing promises real, not to invent new ones.
+
+**None of it produces revenue.** Nothing can be charged until Stripe exists (#29,
+owner-only) and nobody can sign in until `EMAIL_FROM` is set. Those two are the whole
+critical path to money, and neither is a feature. The one path needing neither is the free
+first bundle, which the pricing page already routes to email — resting on an assumption
+nobody has tested, that `hello@lacre.dev` actually delivers.
 
 ## Open PRs
 
