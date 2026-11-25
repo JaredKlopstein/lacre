@@ -76,13 +76,31 @@ Shipped in core, two ways to record an MCP tool call
   receipt per completed call, and records a call that was issued and never came
   back — which an in-agent recorder, dying with the agent, cannot.
 
-  The gateway **does not decide**: every call is forwarded, nothing is refused.
-  It sees only traffic routed through it, so an agent holding its own API keys
-  can call a service directly and the gateway will never know. A receipt's
+  With a **contract set** it also decides, before the call is forwarded
+  ([ADR 0007](docs/adr/0007-contracts-and-approvals.md)). A contract matches on
+  tool name, side-effect class and argument predicates, and either allows the
+  call, refuses it, or holds it for a person. A refusal never reaches the
+  server: the agent gets a JSON-RPC error and the chain gets a receipt with
+  `outcome: denied`, naming the rule that refused it. `require_approval` holds
+  the call instead, recording `outcome: escalated`, and the approval is bound to
+  a hash of the tool *and its arguments* — approving a delete of `/tmp/scratch`
+  does not approve a delete of `/`. Rules fail **closed** by default, and
+  `dryRun` lets a rule be proven against real traffic before it can break
+  anything. Without a contract set the gateway forwards everything, exactly as
+  before.
+
+  **What a deny does and does not guarantee.** It guarantees that the call did
+  not pass *through this proxy*, and that the refusal is in a signed, chained
+  record the agent cannot write. It is **not egress control**: an agent holding
+  its own API keys can reach the service directly, and the gateway will neither
+  see it nor stop it. It does not gate a `tools/call` with no JSON-RPC id, which
+  expects no response and so offers nothing to refuse on. And "hold" means
+  refused now with a retriable error, not a request parked on an open wire — an
+  agent that never retries never runs the approved call. As always, a receipt's
   absence proves nothing.
 
-Not built yet: contracts and approvals (Phase 3); leases and fencing tokens
-(Phase 4); a generated MCP server adapter (Phase 5).
+Not built yet: leases and fencing tokens (Phase 4); collector ingestion
+(Phase 5).
 
 ```bash
 # free: record and verify locally

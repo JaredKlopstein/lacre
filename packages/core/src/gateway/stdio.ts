@@ -91,7 +91,14 @@ export function parseGatewayArgs(argv: string[]): GatewayCliOptions {
  * what the handler returns. MCP stdio is newline-delimited JSON, and a chunk
  * boundary can fall anywhere, so a partial line is held until the rest arrives.
  */
-export function lineSplitter(onLine: (line: string) => string, write: (text: string) => void) {
+/**
+ * Split a byte stream into lines and hand each to `onLine`.
+ *
+ * `onLine` may return null, which writes nothing: that is how a refused call
+ * is dropped instead of being forwarded. Anything it returns is written
+ * verbatim, so an allowed line reaches the other side byte for byte.
+ */
+export function lineSplitter(onLine: (line: string) => string | null, write: (text: string) => void) {
   let buffer = '';
   return {
     push(chunk: string): void {
@@ -100,14 +107,16 @@ export function lineSplitter(onLine: (line: string) => string, write: (text: str
       while (index !== -1) {
         const line = buffer.slice(0, index);
         buffer = buffer.slice(index + 1);
-        write(`${onLine(line)}\n`);
+        const out = onLine(line);
+        if (out !== null) write(`${out}\n`);
         index = buffer.indexOf('\n');
       }
     },
     /** Anything left without a trailing newline, at end of stream. */
     flush(): void {
       if (buffer !== '') {
-        write(onLine(buffer));
+        const out = onLine(buffer);
+        if (out !== null) write(out);
         buffer = '';
       }
     },
@@ -179,7 +188,14 @@ export async function runMcpGatewayCli(argv: string[]): Promise<number> {
   const child = spawn(opts.command[0]!, opts.command.slice(1), { stdio: ['pipe', 'pipe', 'inherit'] });
 
   const toServer = lineSplitter(
-    (line) => gateway.fromAgent(line),
+    (line) => {
+      const directive = gateway.fromAgent(line);
+      // A refusal is written to stdout, the agent's own channel, before the
+      // line is dropped -- so the agent gets an answer rather than a call that
+      // silently never returns.
+      if (directive.reply !== null) process.stdout.write(`${directive.reply}\n`);
+      return directive.forward;
+    },
     (text) => void child.stdin.write(text),
   );
   const toAgent = lineSplitter(
