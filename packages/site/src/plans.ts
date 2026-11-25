@@ -167,7 +167,7 @@ export function bundleTerms(): string[] {
   return [
     'Pay as you go, no subscription',
     ...(FREE_FIRST_BUNDLES > 0 ? [firstBundleClaim()] : []),
-    `You need ${BRAND.name} Core running from source and recording your agent’s receipts first`,
+    `You need ${BRAND.name} Core, installed from npm or run from source, recording your agent’s receipts first`,
     'Covers the receipts already recorded when the bundle is made, and is timestamped then',
     // The term's first use on /pricing and /checkout, so it says what the file is.
     `You send your chain file, ${CHAIN_FILE}: the database Core keeps your receipts and agents’ public keys in. ` +

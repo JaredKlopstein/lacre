@@ -13,7 +13,7 @@ node packages/verifier/bin/lacre-verify.mjs evidence.json --trust digicert-root.
 
 Run from a source checkout after `pnpm install && pnpm run build` (see
 [Getting started from source](https://github.com/JaredKlopstein/lacre/blob/main/docs/getting-started.md)).
-`npx @lacre/verifier` works in its place once the package is published to npm.
+Without a checkout, `npx @lacre/verifier evidence.json --trust digicert-root.pem` does the same.
 
 Exit codes: `0` verified, `1` verification failed, `2` bundle unreadable or bad arguments.
 Exit `2` means there is no verdict: the bundle could not be read or is not JSON
@@ -31,8 +31,7 @@ exit-`2` errors (`{ "ok": false, "error": { "code", "message" } }`).
 node packages/verifier/bin/lacre-verify.mjs run receipts.json --keys keys.json [--json]
 ```
 
-From a source checkout, as above; `npx @lacre/verifier run` works once the
-package is published to npm.
+From a source checkout, as above, or without one as `npx @lacre/verifier run`.
 
 `receipts.json` is a JSON array of signed receipts in stored form, in seq
 order; `keys.json` maps each `lacre.key_id` to its Ed25519 JWK (include
