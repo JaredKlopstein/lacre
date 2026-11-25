@@ -59,8 +59,19 @@ export {
 } from './adapters/mcp.js';
 // The same tool calls, recorded from outside the agent instead of inside it.
 export {
-  createMcpGateway, type McpGateway, type McpGatewayOptions,
+  createMcpGateway, type McpGateway, type McpGatewayOptions, type AgentDirective,
+  LACRE_DENIED_CODE, LACRE_APPROVAL_REQUIRED_CODE,
 } from './gateway/mcp-gateway.js';
+// The decision made before the call is forwarded (docs/adr/0007).
+export {
+  evaluateContracts,
+  type Contract, type ContractSet, type ContractVerdict, type ContractEffect,
+  type ArgumentPredicate, type FailurePolicy, type GatewayCall,
+} from './gateway/contracts.js';
+export {
+  createMemoryApprovalStore, actionHashFor,
+  type ApprovalStore, type MemoryApprovalStore, type ApprovalDecision, type PendingApproval,
+} from './gateway/approvals.js';
 export {
   runMcpGatewayCli, openGateway, parseGatewayArgs, lineSplitter,
   type GatewayCliOptions, type GatewayRuntime,

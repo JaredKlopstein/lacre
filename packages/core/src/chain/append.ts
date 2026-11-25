@@ -22,6 +22,7 @@ import {
   type TrustLevel,
   type IssuerKind,
   type ProvenanceClass,
+  type ContractResult,
   LACRE_RECEIPT_VERSION,
 } from '../receipt/schema.js';
 import { LacreError } from '../errors.js';
@@ -47,6 +48,13 @@ export interface AppendInput {
   riskScore?: number;
   latencyMs?: number;
   idempotencyKey?: string;
+  /** Contracts and approvals (docs/adr/0007-contracts-and-approvals.md). The
+   *  pre-execution decision, recorded on the receipt for the call it governed.
+   *  Each is omitted from the receipt when undefined, so receipts written
+   *  without a contract keep their exact earlier bytes. */
+  contractId?: string;
+  contractResult?: ContractResult;
+  approvalId?: string;
   /** Tool-call context (docs/adr/0004-tool-call-receipts.md). Each is omitted
    *  from the receipt when undefined. */
   issuerKind?: IssuerKind;
@@ -200,6 +208,9 @@ export function appendReceipt(db: Db, input: AppendInput): AppendResult {
         signature_alg: 'ed25519',
         key_id: input.keyId,
         ...(input.idempotencyKey !== undefined ? { idempotency_key: input.idempotencyKey } : {}),
+        ...(input.contractId !== undefined ? { contract_id: input.contractId } : {}),
+        ...(input.contractResult !== undefined ? { contract_result: input.contractResult } : {}),
+        ...(input.approvalId !== undefined ? { approval_id: input.approvalId } : {}),
         ...(input.issuerKind !== undefined ? { issuer_kind: input.issuerKind } : {}),
         ...(input.runId !== undefined ? { run_id: input.runId } : {}),
         ...(input.turnId !== undefined ? { turn_id: input.turnId } : {}),

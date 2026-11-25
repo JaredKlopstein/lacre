@@ -128,7 +128,7 @@ describe('it forwards what it was given, byte for byte', () => {
   it('returns the original line, not a re-encoding of it', () => {
     const gw = gateway();
     const line = '{"jsonrpc":"2.0",  "id":7,"method":"tools/call","params":{"name":"b","arguments":{"z":1,"a":2}}}';
-    expect(gw.fromAgent(line)).toBe(line);
+    expect(gw.fromAgent(line).forward).toBe(line);
     const response = '{"jsonrpc":"2.0", "id":7,  "result":{"content":[]}}';
     expect(gw.fromServer(response)).toBe(response);
   });
@@ -136,7 +136,7 @@ describe('it forwards what it was given, byte for byte', () => {
   it('passes traffic that is not a tool call straight through, recording nothing', () => {
     const gw = gateway();
     const listing = JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/list' });
-    expect(gw.fromAgent(listing)).toBe(listing);
+    expect(gw.fromAgent(listing).forward).toBe(listing);
     gw.fromServer(JSON.stringify({ jsonrpc: '2.0', id: 9, result: { tools: [] } }));
     expect(storedReceipts()).toHaveLength(0);
   });
@@ -144,14 +144,14 @@ describe('it forwards what it was given, byte for byte', () => {
   it('passes notifications through, recording nothing', () => {
     const gw = gateway();
     const note = JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' });
-    expect(gw.fromAgent(note)).toBe(note);
+    expect(gw.fromAgent(note).forward).toBe(note);
     expect(storedReceipts()).toHaveLength(0);
   });
 
   it('passes a line that is not JSON through, and does not throw', () => {
     const gw = gateway();
     expect(() => gw.fromAgent('not json at all')).not.toThrow();
-    expect(gw.fromAgent('not json at all')).toBe('not json at all');
+    expect(gw.fromAgent('not json at all').forward).toBe('not json at all');
     expect(gw.fromServer('')).toBe('');
     expect(storedReceipts()).toHaveLength(0);
   });

@@ -98,10 +98,13 @@ export const LacreExtension = z.object({
   /** RFC 7638 thumbprint of the signing key. Makes rotation auditable. */
   key_id: z.string().min(1),
 
-  /** Phase 3 -- contracts. Absent until a contract governs the action. */
+  /** The pre-execution decision (docs/adr/0007). Written by the MCP gateway
+   *  when a contract set is configured; absent on a receipt no contract
+   *  governed, so earlier receipts keep their exact bytes. */
   contract_id: z.string().min(1).nullish(),
   contract_result: ContractResult.nullish(),
-  /** Phase 3 -- approvals, bound to a specific action hash. */
+  /** The approval a person gave or refused, bound to a specific action hash
+   *  (docs/adr/0007). Absent until a `require_approval` contract was answered. */
   approval_id: z.string().min(1).nullish(),
   /** Phase 4 -- leases and fencing. */
   lease_id: z.string().min(1).nullish(),
