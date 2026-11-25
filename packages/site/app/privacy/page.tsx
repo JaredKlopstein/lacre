@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BRAND } from '../../src/brand';
+import { contactForwarding } from '../../src/contact-forwarding';
 import { LEGAL, TERMS_PATH, fact } from '../../src/legal';
 import { LegalNotice } from '../../src/legal-notice';
-import { NINETY_DAY_PACKAGE } from '../../src/plans';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/privacy' },
   title: 'Privacy',
   description: `What personal data ${BRAND.name} collects, why, who processes it and how long it is kept.`,
 };
@@ -14,10 +15,31 @@ export const metadata: Metadata = {
 // the billing database). Facts only the owner can supply come from src/legal.ts and
 // render as bracketed placeholders until set.
 export default function PrivacyPage() {
+  // Whether this deployment can send a message at all: whether the email
+  // provider the contact route sends through is configured. While it is not,
+  // the clause below would describe a flow that does not occur -- nothing
+  // reaches any inbox and nothing is kept -- and both forms tell the visitor so.
+  const forwarding = contactForwarding();
+  // Configuring the provider without naming who carries the messages means this
+  // page is describing a disclosure it does not make. That must be visible on
+  // the page rather than discovered later, so it says so where the effective
+  // date is, and test/privacy-contact.test.ts holds it there.
+  const undisclosed = forwarding && LEGAL.contactProcessor === null;
+  // The contact form sends through the same provider as the sign-in link, so
+  // naming it twice in the processor list would read as two companies. One
+  // entry, widened to cover both, says what that company actually sees.
+  const oneProvider = forwarding && LEGAL.contactProcessor !== null && LEGAL.contactProcessor === LEGAL.emailProvider;
   return (
     <article>
       <h1>Privacy</h1>
       <LegalNotice />
+      {undisclosed && (
+        <p role="note" className="legal-draft">
+          <strong>Incomplete.</strong> Messages sent through the contact form and the waitlist are passed to a
+          service that is not yet named below. Until it is, do not send anything through them you would not send
+          to an undisclosed third party; write to {fact('contactEmail')} instead.
+        </p>
+      )}
 
       <h2>Who is responsible</h2>
       <p>
@@ -40,28 +62,38 @@ export default function PrivacyPage() {
           store your card number.
         </li>
         <li>
-          <strong>Messages you send us.</strong> The Enterprise contact form and the early-access waitlist send
-          your name, work email, company, fleet size and message to our team inbox, so we can reply. We keep them
-          for {fact('contactRetention')}.
+          <strong>Messages you send us.</strong>{' '}
+          {forwarding ? (
+            <>
+              The Enterprise contact form and the early-access waitlist send your name, work email, company, fleet
+              size and message to our team inbox, so we can reply. Nothing you type is stored on this website
+              itself. We delete what reaches the inbox within {fact('contactRetention')}, as a step we carry out
+              rather than an automatic expiry.
+            </>
+          ) : (
+            <>
+              The Enterprise contact form and the early-access waitlist cannot send messages at the moment, and
+              both say so when you try. Nothing you type into them is sent anywhere, stored on this website or
+              kept by us, so until that changes there is nothing here for us to hold. You can reach us at{' '}
+              {fact('contactEmail')}, or through the public issues on{' '}
+              <a href={BRAND.repository}>GitHub</a>.
+            </>
+          )}
         </li>
         <li>
           <strong>Your chain file, if you buy an evidence bundle.</strong> To make the bundle we ask you to email us
           your chain file. It holds your receipts, including the action details your agents recorded, and your
           agents’ public keys. It never holds a signing key, and we never ask for one. We use it only to timestamp
-          the chain and build your bundle, and we keep the chain file and the bundle for{' '}
-          {fact('bundleRetention')}, so a copy exists if you need it again.
-        </li>
-        <li>
-          <strong>Your anchors, if you buy the {NINETY_DAY_PACKAGE.days}-day evidence package.</strong> Each week you
-          email us your chain file and we anchor it, as for a bundle. We keep each chain file for{' '}
-          {fact('bundleRetention')}, and every anchor we make for you for the {NINETY_DAY_PACKAGE.days}-day package
-          term plus {NINETY_DAY_PACKAGE.anchorsKeptDaysAfterTerm} days, so your anchor history is held by someone
-          other than you for that time.
+          the chain and build your bundle. It stays in the inbox named below, and we delete it and the bundle
+          within {fact('bundleRetention')}, so a copy exists if you need it again in that time. There is no
+          automatic expiry: deleting them is a step we carry out, so if you want yours gone sooner, ask and we
+          will.
         </li>
         <li>
           <strong>Abuse protection.</strong> To limit how often sign-in links and messages can be sent, we count
           requests per email address and per IP address. Only one-way hashes are stored, never the address
-          itself, and the counts are deleted after 15 minutes.
+          itself, and the counts expire after 15 minutes. This one is enforced by the code that reads them, not
+          by us remembering: an expired count is ignored and overwritten.
         </li>
         <li>
           <strong>Server logs.</strong> Our own logs record request identifiers and error types, not your email or
@@ -89,8 +121,19 @@ export default function PrivacyPage() {
         <li>Vercel, which hosts the website.</li>
         <li>Neon, which hosts our database.</li>
         <li>Stripe, which takes payments.</li>
-        <li>{fact('emailProvider')}, which delivers sign-in emails.</li>
-        <li>{fact('mailboxProvider')}, which hosts the inbox that receives chain files for evidence bundles.</li>
+        <li>
+          {fact('emailProvider')}, which delivers sign-in emails
+          {oneProvider ? ' and carries the messages sent through the contact form and the waitlist' : ''}.
+        </li>
+        {/* Contact messages land in that same inbox once they can be sent, so the
+            entry says so rather than leaving a reader to assume it only sees chain files. */}
+        <li>
+          {fact('mailboxProvider')}, which hosts the inbox that receives chain files for evidence bundles
+          {forwarding ? ' and the messages sent through the contact form and the waitlist' : ''}.
+        </li>
+        {forwarding && LEGAL.contactProcessor && !oneProvider && (
+          <li>{fact('contactProcessor')}, which receives messages sent through the contact form and the waitlist.</li>
+        )}
       </ul>
 
       <h2>Your choices and rights</h2>
@@ -98,6 +141,12 @@ export default function PrivacyPage() {
         You can ask what personal data we hold about you, or ask us to correct or delete it, by writing to{' '}
         {fact('contactEmail')}. We delete what we are not required to keep; payment records may have to be kept
         for tax and accounting purposes.
+      </p>
+      <p>
+        Every period above except the 15-minute one is a commitment we keep by hand, in the inbox and the
+        accounts that hold the data. Saying so is the point: a period no system enforces is worth exactly what
+        the people behind it are worth, and you should know which kind each one is before you decide to trust
+        us with anything.
       </p>
 
       <h2>Changes</h2>

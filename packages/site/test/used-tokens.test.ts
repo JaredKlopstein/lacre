@@ -7,6 +7,7 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { POST } from '../app/api/auth/callback/route.js';
 import { CALLBACK_PATH, CHECKOUT_PATH, SESSION_COOKIE, createLinkToken } from '../src/auth/session.js';
+import { withoutBrandDomain } from './brand-domain.js';
 import {
   DATABASE_URL_ENV,
   markTokenUsed,
@@ -47,7 +48,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await pg.close();
 });
+let restoreBrandDomain: (() => void) | null = null;
 beforeEach(async () => {
+  restoreBrandDomain = withoutBrandDomain();
   await pg.exec('TRUNCATE site_magic_link_used');
   logged = [];
   for (const level of ['error', 'warn', 'log', 'info', 'debug'] as const) {
@@ -64,6 +67,8 @@ beforeEach(async () => {
   vi.stubEnv('VERCEL_URL', '');
 });
 afterEach(() => {
+  restoreBrandDomain?.();
+  restoreBrandDomain = null;
   vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -83,7 +88,7 @@ async function expectUnavailable(res: Response, cause: string): Promise<void> {
   const requestId = res.headers.get('x-request-id');
   expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
   const body = await res.clone().text();
-  expect(body).toContain('Sign-in is unavailable right now.');
+  expect(body).toContain('Email sign-in is not configured on this server yet.');
   expect(body).toContain(requestId);
   const everything = [...res.headers].map(([k, v]) => `${k}: ${v}`).join('\n') + '\n' + body;
   for (const name of [DATABASE_URL_ENV, 'SESSION_SECRET', 'EMAIL_', 'migrations', '.sql']) {

@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { BRAND } from '../../src/brand';
+import { contactForwarding } from '../../src/contact-forwarding';
+import { HowToHear } from '../../src/how-to-hear';
 import { SIGNUP_PATH } from '../../src/auth/email';
 import { AccountBar } from '../../src/account-bar';
 import { PRIVACY_PATH, TERMS_PATH } from '../../src/legal';
@@ -63,10 +65,25 @@ function OpensSoon() {
       <h1>Checkout</h1>
       <h2>{BUNDLE_OPENS_SOON}</h2>
       <p>{BUNDLE_CLOSED_LINE}</p>
-      <p>
-        <Link href={WAITLIST_HREF}>Join the early access list</Link> and we will email you when bundles open. No
-        payment details are asked for.
-      </p>
+      {/*
+        The early access list posts to the contact route, which sends nothing
+        while the EMAIL_* variables are unset. Inviting someone to join it then,
+        on the page they reached by trying to buy, is a promise with nothing
+        behind it. The address is given instead, and the invitation returns by
+        itself once sending is configured.
+      */}
+      {contactForwarding() ? (
+        <p>
+          <Link href={WAITLIST_HREF}>Join the early access list</Link> and we will email you when bundles open. No
+          payment details are asked for.
+        </p>
+      ) : (
+        <p>
+          {`The early access list isn't taking sign-ups yet. To hear when bundles open, `}
+          <HowToHear subject="Waitlist" />
+          {'. No payment details are asked for.'}
+        </p>
+      )}
       <p>
         Recording and verifying receipts is free and works now, and a bundle covers only receipts already recorded:{' '}
         <a href={GETTING_STARTED_URL}>start recording with {BRAND.name} Core</a>. Read{' '}

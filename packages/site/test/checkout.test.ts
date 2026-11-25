@@ -16,6 +16,7 @@ import type { BillingDb } from '../src/billing-db.js';
 import { CHECKOUT_API_PATH, createCheckoutRoute, type CheckoutRouteOptions } from '../src/checkout.js';
 import { OFF_SALE_PLANS, annualOverageDisclosure } from '../src/plans.js';
 import { TEST_FACTS, clearLegalFacts, fillLegalFacts, openSaleKeepingCheckout, stubSignInEnv } from './sale-env.js';
+import { withoutBrandDomain } from './brand-domain.js';
 
 /**
  * Authenticated checkout (#59). Stripe is an in-memory fake handed to cloud's own
@@ -32,6 +33,9 @@ vi.mock('next/headers', () => ({ headers: async () => new Headers({ cookie: page
 const u = (...parts: string[]) => parts.join('_');
 const TEST_KEY = u('sk', 'test', 'x'.repeat(24));
 const LIVE_KEY = u('sk', 'live', 'y'.repeat(24));
+// The sale gate requires it (src/bundle-sale.ts), so the page tests below need
+// it set for /checkout to render anything but "Bundles open soon".
+const WEBHOOK_SECRET = u('whsec', 'x'.repeat(24));
 const PRICES: Record<keyof typeof PRICE_ENV, string> = {
   cloud_month: u('price', 'testcloudmonth'),
   cloud_year: u('price', 'testcloudyear'),
@@ -43,7 +47,7 @@ const CUSTOMER = u('cus', 'fakecustomer');
 const SECRET = 'test-session-secret-for-checkout-tests';
 const SITE = 'https://site.example.test';
 const DATABASE_URL = ['postgresql:', '', 'test-user:test-password@db.site.test', 'billing'].join('/');
-const SECRETS = [TEST_KEY, LIVE_KEY, DATABASE_URL, ...Object.values(PRICES)];
+const SECRETS = [TEST_KEY, LIVE_KEY, WEBHOOK_SECRET, DATABASE_URL, ...Object.values(PRICES)];
 const MIGRATIONS = ['0000_billing.sql', '0001_overage.sql', '0002_overage_retry.sql'].map(
   (f) => new URL(`../../cloud/migrations/${f}`, import.meta.url),
 );
@@ -85,7 +89,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await pg.close();
 });
+let restoreBrandDomain: (() => void) | null = null;
 beforeEach(async () => {
+  restoreBrandDomain = withoutBrandDomain();
   await pg.exec('TRUNCATE billing_customers RESTART IDENTITY CASCADE');
   fake = fakeStripe();
   logged = [];
@@ -103,10 +109,13 @@ beforeEach(async () => {
     if (key.endsWith('_BILLING_MODE')) vi.stubEnv(key, '');
   }
   vi.stubEnv('STRIPE_SECRET_KEY', TEST_KEY);
+  vi.stubEnv('STRIPE_WEBHOOK_SECRET', WEBHOOK_SECRET);
   for (const [key, name] of Object.entries(PRICE_ENV)) vi.stubEnv(name, PRICES[key as keyof typeof PRICE_ENV]);
   pageCookie.value = '';
 });
 afterEach(() => {
+  restoreBrandDomain?.();
+  restoreBrandDomain = null;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
@@ -238,7 +247,7 @@ describe("cloud's checkout handler", () => {
   it("refuses a second Cloud subscription for the account's linked customer", async () => {
     await db.insert(billingCustomers).values({ stripeCustomerId: CUSTOMER, accountId: await accountIdFor('ada@example.com') });
     fake = fakeStripe([
-      { id: u('sub', 'existing'), status: 'active', created: 1, metadata: { provenant_plan: 'cloud' }, items: { data: [{ price: { id: PRICES.cloud_year } }] } },
+      { id: u('sub', 'existing'), status: 'active', created: 1, metadata: { lacre_plan: 'cloud' }, items: { data: [{ price: { id: PRICES.cloud_year } }] } },
     ]);
     const res = await postJson({ plan: 'cloud', interval: 'month' }, {}, cloudOnSale());
     expect(res.status).toBe(409);
@@ -354,6 +363,22 @@ describe('return URLs', () => {
     expect(lastCheckout().cancel_url).toBe(`${SITE}/pricing?checkout=cancelled`);
   });
 
+  /**
+   * The shipped value. These are the URLs Stripe returns a paying customer to,
+   * so they have to be on the host the customer arrived at rather than whatever
+   * the deployment happens to be called.
+   */
+  it('returns the customer to the attached domain, with nothing from the environment', async () => {
+    restoreBrandDomain?.();
+    restoreBrandDomain = null;
+    vi.stubEnv('SITE_BASE_URL', '');
+    vi.stubEnv('VERCEL_URL', 'preview.example.test');
+    expect(BRAND.domain).toBe('lacre.dev');
+    await postJson({ kind: 'payg_bundle' });
+    expect(lastCheckout().success_url).toBe('https://lacre.dev/welcome?session_id={CHECKOUT_SESSION_ID}');
+    expect(lastCheckout().cancel_url).toBe('https://lacre.dev/pricing?checkout=cancelled');
+  });
+
   it('prefers BRAND.domain, then SITE_BASE_URL, then VERCEL_URL', async () => {
     vi.stubEnv('VERCEL_URL', 'preview.example.test');
     brand.domain = 'brand.example.test';
@@ -459,7 +484,14 @@ describe('checkout page while bundles cannot be bought here (persona review: Mar
       const html = await render();
       expect(html).toContain('<section data-sale="closed"><h1>Checkout</h1><h2>Bundles open soon</h2>');
       expect(html).toContain('Checkout is not open yet, so nothing can be bought or charged here today.');
-      expect(html).toContain('<a href="/pricing#waitlist">Join the early access list</a>');
+      // The legal facts are cleared here, so there is no contact address to offer:
+      // the page must point at the repository rather than publish "mailto:null".
+      // React escapes the apostrophe in the markup, so match either side of it.
+      expect(html).toContain('The early access list isn');
+      expect(html).toContain('taking sign-ups yet.');
+      expect(html).toContain('watch the <a href="https://github.com/JaredKlopstein/lacre">GitHub repository</a>');
+      expect(html).not.toContain('mailto:null');
+      expect(html).not.toContain('we will email you');
       expect(html).not.toMatch(/<form\b|Continue to payment|\/signup/);
     }
   });

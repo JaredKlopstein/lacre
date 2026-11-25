@@ -3,7 +3,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
-import { billingSchema, billingCustomers, billingSubscriptions } from '@lacre/cloud/dist/billing/schema.js';
+import {
+  billingSchema,
+  billingBundleCredits,
+  billingCustomers,
+  billingSubscriptions,
+} from '@lacre/cloud/dist/billing/schema.js';
 import { POST as signOut, GET as signOutGet } from '../app/api/auth/sign-out/route.js';
 import { POST as callback } from '../app/api/auth/callback/route.js';
 import CheckoutPage from '../app/checkout/page.js';
@@ -21,8 +26,9 @@ import {
   sessionCookie,
 } from '../src/auth/session.js';
 import { usedTokenSchema } from '../src/auth/used-tokens.js';
-import { priceCards, WAITLIST_HREF } from '../src/plans.js';
+import { BUNDLE_FULFILMENT, priceCards, WAITLIST_HREF } from '../src/plans.js';
 import { openSaleKeepingCheckout, stubCheckoutEnv } from './sale-env.js';
+import { withoutBrandDomain } from './brand-domain.js';
 
 /**
  * #101: signed-in pages say who is signed in and let them sign out; checkout lists
@@ -58,8 +64,13 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.close();
 });
+let restoreBrandDomain: (() => void) | null = null;
 beforeEach(async () => {
-  await db.exec('TRUNCATE billing_subscriptions, billing_customers, site_magic_link_used RESTART IDENTITY CASCADE');
+  restoreBrandDomain = withoutBrandDomain();
+  await db.exec(
+    'TRUNCATE billing_bundle_credits, billing_subscriptions, billing_customers, site_magic_link_used'
+      + ' RESTART IDENTITY CASCADE',
+  );
   for (const level of ['error', 'warn', 'log', 'info', 'debug'] as const) vi.spyOn(console, level).mockImplementation(() => {});
   vi.stubEnv('SESSION_SECRET', SECRET);
   vi.stubEnv('EMAIL_API_URL', 'https://email.example.test/send');
@@ -75,6 +86,8 @@ beforeEach(async () => {
 });
 let restoreFacts: () => void = () => {};
 afterEach(() => {
+  restoreBrandDomain?.();
+  restoreBrandDomain = null;
   restoreFacts();
   vi.useRealTimers();
   vi.unstubAllEnvs();
@@ -239,19 +252,38 @@ describe('/account shows the email, and the plan once the webhook stored it', ()
     pageCookie.value = await signedIn();
   });
 
-  async function subscribe(status: string, interval: 'month' | 'year', periodEnd: string) {
-    const [customer] = await (pg.db as ReturnType<typeof drizzle>)
+  /** The billing customer a subscription and a bundle purchase both hang off. */
+  async function billingCustomer(): Promise<string> {
+    await (pg.db as ReturnType<typeof drizzle>)
       .insert(billingCustomers)
       .values({ stripeCustomerId: CUSTOMER, accountId: await accountIdFor(ADA) })
-      .returning();
+      .onConflictDoNothing();
+    return CUSTOMER;
+  }
+
+  async function subscribe(status: string, interval: 'month' | 'year', periodEnd: string) {
     await (pg.db as ReturnType<typeof drizzle>).insert(billingSubscriptions).values({
       stripeSubscriptionId: ['sub', 'signedinpages'].join('_'),
-      stripeCustomerId: customer!.stripeCustomerId,
+      stripeCustomerId: await billingCustomer(),
       plan: 'cloud',
       interval,
       status,
       currentPeriodEnd: new Date(periodEnd),
     });
+  }
+
+  /** One confirmed Checkout Session per argument. `orphan` is one Stripe completed with no customer. */
+  async function buyBundles(...sessions: { credits: number; at: string; orphan?: boolean }[]) {
+    const stripeCustomerId = await billingCustomer();
+    let n = 0;
+    for (const session of sessions) {
+      await (pg.db as ReturnType<typeof drizzle>).insert(billingBundleCredits).values({
+        stripeCheckoutSessionId: ['cs', 'signedinpages', String((n += 1))].join('_'),
+        stripeCustomerId: session.orphan ? null : stripeCustomerId,
+        credits: session.credits,
+        createdAt: new Date(session.at),
+      });
+    }
   }
 
   it('shows the plan, billing period and renewal date of an active subscription', async () => {
@@ -278,6 +310,70 @@ describe('/account shows the email, and the plan once the webhook stored it', ()
   it('ignores a canceled subscription', async () => {
     await subscribe('canceled', 'month', '2026-11-22T00:00:00Z');
     expect(await renderPage(AccountPage)).toMatch(/No plan recorded for this account yet/);
+  });
+
+  it('shows the bundles an account has bought, and stops claiming no plan is recorded', async () => {
+    await buyBundles({ credits: 1, at: '2026-11-15T10:00:00Z' });
+    const html = await renderPage(AccountPage);
+    expect(html).toMatch(/1 bundle bought/);
+    expect(html).toMatch(/Most recent on <time dateTime="2026-11-15">15 November 2026<\/time>/);
+    expect(html).not.toMatch(/No plan recorded for this account yet/);
+  });
+
+  it('sums the credits of every session and dates the most recent', async () => {
+    await buyBundles({ credits: 2, at: '2026-11-10T10:00:00Z' }, { credits: 3, at: '2026-11-14T09:00:00Z' });
+    const html = await renderPage(AccountPage);
+    expect(html).toMatch(/5 bundles bought/);
+    expect(html).toMatch(/14 November 2026/);
+  });
+
+  it('shows a subscription and bundles together, since an account can have both', async () => {
+    await subscribe('active', 'month', '2026-12-22T00:00:00Z');
+    await buyBundles({ credits: 1, at: '2026-11-15T10:00:00Z' });
+    const html = await renderPage(AccountPage);
+    expect(html).toMatch(/Cloud, monthly/);
+    expect(html).toMatch(/1 bundle bought/);
+  });
+
+  it('says there is no subscription, rather than no plan, when the account has only bundles', async () => {
+    await buyBundles({ credits: 1, at: '2026-11-15T10:00:00Z' });
+    const html = await renderPage(AccountPage);
+    expect(html).toMatch(/No subscription on this account/);
+    expect(html).toContain('href="/pricing"');
+  });
+
+  it('tells a bundle buyer what happens next, because fulfilment is by email and by hand', async () => {
+    await buyBundles({ credits: 1, at: '2026-11-15T10:00:00Z' });
+    expect(unescape(await renderPage(AccountPage))).toContain(BUNDLE_FULFILMENT);
+  });
+
+  it('never says how many bundles are left, which nothing in the schema records', async () => {
+    await buyBundles({ credits: 4, at: '2026-11-15T10:00:00Z' });
+    const html = await renderPage(AccountPage);
+    expect(html).toMatch(/4 bundles bought/);
+    expect(html).not.toMatch(/remaining|left|balance|credits? available/i);
+  });
+
+  it('leaves out a session Stripe completed without a customer, which ties to no account', async () => {
+    await buyBundles({ credits: 4, at: '2026-11-15T10:00:00Z', orphan: true });
+    const html = await renderPage(AccountPage);
+    expect(html).not.toMatch(/bundles? bought/);
+    expect(html).toMatch(/No plan recorded for this account yet/);
+  });
+
+  it("leaves out another account's bundles", async () => {
+    const other = ['cus', 'someoneelse'].join('_');
+    const d = pg.db as ReturnType<typeof drizzle>;
+    await d.insert(billingCustomers).values({ stripeCustomerId: other, accountId: await accountIdFor('grace@example.com') });
+    await d.insert(billingBundleCredits).values({
+      stripeCheckoutSessionId: ['cs', 'someoneelse'].join('_'),
+      stripeCustomerId: other,
+      credits: 9,
+      createdAt: new Date('2026-11-15T10:00:00Z'),
+    });
+    const html = await renderPage(AccountPage);
+    expect(html).not.toMatch(/bundles? bought/);
+    expect(html).toMatch(/No plan recorded for this account yet/);
   });
 
   it('says plan details are unavailable, without failing the page, when the billing database is not configured', async () => {

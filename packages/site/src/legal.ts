@@ -28,7 +28,10 @@ export interface LegalFacts {
   readonly refundWindowDays: number | null;
   /** Governing law and venue, e.g. "the laws of the State of Texas". */
   readonly governingLaw: string | null;
-  /** The email provider that delivers sign-in links, named in the Privacy Policy. */
+  /**
+   * The email provider that delivers sign-in links, named in the Privacy Policy.
+   * It carries contact-form messages too; see contactProcessor.
+   */
   readonly emailProvider: string | null;
   /** How long contact-form messages are kept, e.g. "12 months". */
   readonly contactRetention: string | null;
@@ -36,6 +39,18 @@ export interface LegalFacts {
   readonly bundleRetention: string | null;
   /** The mailbox provider whose inbox receives chain files by email, named in the Privacy Policy. */
   readonly mailboxProvider: string | null;
+  /**
+   * Whoever carries a contact-form message on its way to the inbox: the provider
+   * the EMAIL_API_* variables point at. Optional, because a deployment that
+   * cannot send has nobody to name -- but a deployment that can and leaves this
+   * null is processing people's details through a company the policy does not
+   * disclose. test/privacy-contact.test.ts fails in exactly that state rather
+   * than letting it ship quietly.
+   *
+   * When it is the same company as emailProvider, the Privacy Policy widens that
+   * one entry rather than listing the name twice.
+   */
+  readonly contactProcessor: string | null;
 }
 
 /**
@@ -46,12 +61,21 @@ export interface LegalFacts {
 export const SECURITY_REPORT_URL = `${BRAND.repository}/security/advisories/new`;
 
 export const LEGAL: LegalFacts = {
-  // Supplied by the owner on 2026-11-10. mailboxProvider hosts the inbox the owner
-  // named for chain files (contact@frontierforge.tech); the owner confirmed it.
+  // Supplied by the owner on 2026-11-10. The contact address moved from
+  // contact@frontierforge.tech to hello@lacre.dev on 2026-11-20, so the site shows
+  // one brand (#254); mail to it lands in the hello@ascellastudios.com mailbox.
+  //
+  // mailboxProvider moved with it, and had to. It names the company holding the
+  // inbox that receives chain files and contact messages, and the two domains are
+  // on different providers: frontierforge.tech's MX is
+  // frontierforge-tech.mail.protection.outlook.com (Microsoft 365), while both
+  // lacre.dev and ascellastudios.com answer with smtp.google.com. Changing the
+  // address alone would have left /privacy naming a processor that no longer sees
+  // the mail. test/contact-address.test.ts holds the two together.
   entityName: 'Ascella Studios LLC',
   entityJurisdiction: 'a Wisconsin limited liability company',
-  contactEmail: 'contact@frontierforge.tech',
-  securityEmail: 'contact@frontierforge.tech',
+  contactEmail: 'hello@lacre.dev',
+  securityEmail: 'hello@lacre.dev',
   postalAddress: '408 N Votech Drive, Watertown, WI 53098',
   effectiveDate: '2026-11-14',
   refundWindowDays: 30,
@@ -59,10 +83,20 @@ export const LEGAL: LegalFacts = {
   emailProvider: 'Resend',
   contactRetention: '90 days',
   bundleRetention: '90 days',
-  mailboxProvider: 'Microsoft 365 (Exchange Online)',
+  mailboxProvider: 'Google Workspace (Gmail)',
+  // The contact form sends its submission as email through the same provider as
+  // the sign-in link, so the company that carries it is emailProvider. Whoever
+  // it is set to has to be named here in the same change; it is set here because
+  // this is that change.
+  contactProcessor: 'Resend',
 };
 
-/** Facts the documents cannot take effect without. The postal address is optional. */
+/**
+ * Facts the documents cannot take effect without. The postal address is
+ * optional, and so is contactProcessor: a deployment that cannot send has
+ * nobody to name, and a required fact left null would put a bracketed
+ * placeholder on a page that is in effect.
+ */
 export const REQUIRED_FACTS = [
   'entityName',
   'entityJurisdiction',
@@ -104,4 +138,5 @@ const PLACEHOLDERS: Record<keyof LegalFacts, string> = {
   contactRetention: 'contact message retention: owner to supply',
   bundleRetention: 'chain file and bundle retention: owner to supply',
   mailboxProvider: 'mailbox provider for chain files: owner to supply',
+  contactProcessor: 'service that receives contact messages: owner to supply',
 };

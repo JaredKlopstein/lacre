@@ -292,27 +292,68 @@ async function checkoutCompleted(tx: BillingTx, session: Stripe.Checkout.Session
   if (session.mode === 'subscription') {
     const subscription = idOf(session.subscription);
     if (!customer || !subscription) throw new Error('subscription checkout completed with no customer or subscription');
-    const interval = session.metadata?.provenant_interval;
+    const interval = session.metadata?.lacre_interval;
     if (interval !== 'month' && interval !== 'year') {
-      throw new Error('subscription checkout carries no provenant_interval; it was not created by the checkout route');
+      throw new Error('subscription checkout carries no lacre_interval; it was not created by the checkout route');
     }
     await saveSubscription(tx, {
       stripeSubscriptionId: subscription,
       stripeCustomerId: customer,
-      plan: planOf(session.metadata?.provenant_plan) ?? 'cloud',
+      plan: planOf(session.metadata?.lacre_plan) ?? 'cloud',
       interval,
       status: paid ? 'active' : 'incomplete',
     }, 'insert-only');
     return;
   }
 
-  if (session.mode === 'payment' && session.metadata?.provenant_purchase === 'payg_bundle' && session.payment_status === 'paid') {
-    await creditBundle(tx, {
-      stripeCheckoutSessionId: session.id,
-      stripeCustomerId: customer,
-      stripePaymentIntentId: idOf(session.payment_intent),
-    });
+  if (session.mode === 'payment') {
+    if (session.metadata?.lacre_purchase === 'payg_bundle' && session.payment_status === 'paid') {
+      await creditBundle(tx, {
+        stripeCheckoutSessionId: session.id,
+        stripeCustomerId: customer,
+        stripePaymentIntentId: idOf(session.payment_intent),
+      });
+      return;
+    }
+    // Money arrived for something this application did not sell. The branch
+    // above is the only one-off purchase it creates, and every session it
+    // creates carries lacre_purchase; a paid session without it was created
+    // elsewhere, a Stripe Payment Link being the obvious way. Stripe hosts that
+    // page and never consults this code, so nothing here could have refused the
+    // payment -- but it must not pass in silence either, which is what used to
+    // happen: the handler fell through, the event id was recorded, the answer
+    // was 200 handled:true, and Lacre's only record of the sale was Stripe's.
+    //
+    // The subscription branch above already refuses to guess, by throwing when
+    // lacre_interval is absent. This is the same asymmetry resolved the other
+    // way: a log rather than a throw, because a throw makes Stripe retry a
+    // permanently failing event and Stripe disables an endpoint that keeps
+    // failing -- which would cost the recording of real purchases to make a
+    // point about one that cannot be recorded anyway.
+    if (paid) log.error(unattributedPayment(session));
   }
+}
+
+/**
+ * What the operator needs in order to find a payment this application cannot
+ * account for, carrying no Stripe id, because every logged line is scrubbed of
+ * them by design. The amount is what makes it findable in the dashboard, so it
+ * is given in minor units exactly as Stripe sends it rather than divided by a
+ * hundred, which is wrong for some currencies.
+ */
+function unattributedPayment(session: Stripe.Checkout.Session): string {
+  const purchase = typeof session.metadata?.lacre_purchase === 'string'
+    ? `an unrecognised purchase (${session.metadata.lacre_purchase.replace(/[^\x20-\x7e]/g, '').slice(0, 40)})`
+    : 'no stated purchase';
+  return (
+    `billing webhook: a completed one-off payment names ${purchase}, so nothing was credited to any ` +
+    `account and no record of what was sold exists outside Stripe. amount_total=${session.amount_total ?? 'unstated'} ` +
+    `currency=${session.currency ?? 'unstated'}. ` +
+    'Every checkout session this application creates carries lacre_purchase, so this one was created ' +
+    'elsewhere -- a Stripe Payment Link, for instance, which Stripe hosts and this code cannot gate. ' +
+    'Find it in the Stripe dashboard by that amount and this time, settle what the customer is owed, and ' +
+    'deactivate the link if it should not be selling. Stripe ids are redacted from this log by design.'
+  );
 }
 
 function mismatchWarning(link: 'customer_linked_elsewhere' | 'account_linked_elsewhere'): string {
@@ -380,13 +421,13 @@ async function refundLatestCharge(stripe: DuplicateGuardStripe, sub: Subscriptio
 
 function subscriptionState(sub: Stripe.Subscription) {
   const item = sub.items.data[0];
-  const interval = item?.price.recurring?.interval ?? sub.metadata.provenant_interval;
+  const interval = item?.price.recurring?.interval ?? sub.metadata.lacre_interval;
   if (!interval) throw new Error('subscription has no recurring interval');
   return {
     stripeSubscriptionId: sub.id,
     stripeCustomerId: idOf(sub.customer)!,
     stripePriceId: item?.price.id ?? null,
-    plan: planOf(sub.metadata.provenant_plan) ?? planOf(item?.price.metadata.plan_id) ?? 'cloud',
+    plan: planOf(sub.metadata.lacre_plan) ?? planOf(item?.price.metadata.plan_id) ?? 'cloud',
     interval,
     status: sub.status,
     currentPeriodStart: item ? fromUnix(item.current_period_start) : null,

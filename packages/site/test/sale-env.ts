@@ -25,6 +25,7 @@ export const TEST_FACTS: LegalFacts = {
   contactRetention: 'a test period',
   bundleRetention: 'a test period',
   mailboxProvider: 'a test mailbox',
+  contactProcessor: 'a test forwarding service',
 };
 
 /** Fills LEGAL with TEST_FACTS. Returns the function that puts the nulls back. */
@@ -56,6 +57,7 @@ export function stubCheckoutEnv(): void {
   vi.stubEnv('DATABASE_URL', ['postgresql:', '', 'test-user:test-password@db.site.test', 'site'].join('/'));
   clearBillingMode();
   vi.stubEnv('STRIPE_SECRET_KEY', u('sk', 'test', 'x'.repeat(24)));
+  vi.stubEnv('STRIPE_WEBHOOK_SECRET', u('whsec', 'x'.repeat(24)));
   for (const [key, name] of Object.entries(PRICE_ENV)) vi.stubEnv(name, u('price', `test${key.replace(/_/g, '')}`));
 }
 
@@ -94,6 +96,7 @@ export function clearSaleEnv(): void {
     'VERCEL_URL',
     'DATABASE_URL',
     'STRIPE_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET',
     ...Object.values(PRICE_ENV),
     'MAGIC_LINK_ENABLED',
     'SESSION_SECRET',

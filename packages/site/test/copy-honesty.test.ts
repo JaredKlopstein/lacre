@@ -14,6 +14,8 @@ import {
   pricingAnnualOverageDisclosure,
 } from '../src/plans.js';
 import { fillLegalFacts, stubCheckoutEnv, stubSignInEnv } from './sale-env.js';
+import HomePage from '../app/page.js';
+import { contactForwarding } from '../src/contact-forwarding.js';
 
 // The checkout page reads the request (to stay dynamic); no cookie, so no account.
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
@@ -36,6 +38,152 @@ const pages = {
   pricingAnnual: renderToStaticMarkup(await PricingPage({ searchParams: Promise.resolve({ billing: 'annual' }) })),
   checkout: renderToStaticMarkup(await CheckoutPage({ searchParams: Promise.resolve({}) })),
 };
+
+/**
+ * The overclaims the November 2026 legal review took out (#255, #259), kept out.
+ *
+ * Each of these said more than Lacre's own Security, Verify and Terms pages
+ * support, and each was replaced with copy Counsel approved. A sweep is the right
+ * guard because the wording is not owned by one component: the same lines were
+ * repeated across the home page, the Exhibit A panel, /how-it-works and the
+ * GitHub Pages landing, and that repetition is how three of them survived the
+ * first pass. Anything reintroducing one fails here rather than on a live page.
+ *
+ * Comment lines are stripped first, so a comment may still quote a removed
+ * phrase to explain why it went -- exhibit-chain.tsx does exactly that.
+ */
+describe('the overclaims legal review removed stay removed', () => {
+  const SURFACES = [
+    'packages/site/app/page.tsx',
+    'packages/site/app/how-it-works/page.tsx',
+    'packages/site/app/security/page.tsx',
+    'packages/site/app/pricing/page.tsx',
+    'packages/site/app/verify/page.tsx',
+    'packages/site/app/terms/page.tsx',
+    'packages/site/app/privacy/page.tsx',
+    'packages/site/src/exhibit-chain.tsx',
+    'packages/site/src/plans.ts',
+    'packages/site/src/proof-table.ts',
+    'docs/index.html',
+    'docs/demo.html',
+  ] as const;
+
+  /** Shipped text only: whole-line // and * and <!-- comments dropped. */
+  const shipped = (file: string) =>
+    readFileSync(new URL(`../../../${file}`, import.meta.url), 'utf8')
+      .split('\n')
+      .filter((line) => {
+        const t = line.trim();
+        return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*') || t.startsWith('<!--'));
+      })
+      .join('\n');
+
+  const BANNED: readonly (readonly [RegExp, string])[] = [
+    [/\bProve it\b/i, 'claims proof of the action, not of the record (#255)'],
+    [/without trusting (?:you|the operator)/i, 'verification still rests on the keys and the operator (#255, #259)'],
+    [/no reason to trust/i, 'same claim, stronger wording (#259)'],
+    [/can(?:'|\u2019)t be rewritten|cannot be rewritten/i, 'an anchor makes a change detectable, it does not prevent one (#255)'],
+    [/quietly rewritten/i, 'same, and it omits the un-anchored tail (#259)'],
+    [/Nothing has been altered/i, 'the demo checks links and the head, not signatures or the timestamp (#255)'],
+    [/\bbackdated\b/i, 'overstates what the anchor covers (#259)'],
+    [/tamper-proof|\bimmutable\b/i, 'Lacre is tamper-evident, not tamper-proof'],
+    [/\badmissible\b|\bin court\b/i, 'no legal-grade claim is substantiated'],
+    [/agents? actually did|prove what your agents/i, 'Lacre records what an agent reported (#259)'],
+    [/makes it evidence/i, 'overstates what signing and anchoring deliver (#259)'],
+  ];
+
+  it('appears on no public surface', () => {
+    for (const file of SURFACES) {
+      const body = shipped(file);
+      for (const [pattern, why] of BANNED) {
+        expect(pattern.test(body), `${file} matches ${pattern}: ${why}`).toBe(false);
+      }
+    }
+  });
+
+  it('says the approved thing instead', () => {
+    const home = shipped('packages/site/app/page.tsx');
+    expect(home).toContain('Get a signed, tamper-evident record of what it reported.');
+    expect(home).toContain('any change to history up to the anchor is detected');
+    expect(home).toContain('Records added after the last anchor aren\u2019t covered until the next one.');
+
+    const exhibit = shipped('packages/site/src/exhibit-chain.tsx');
+    expect(exhibit).toContain('Signatures and the timestamp are not checked on this page.');
+
+    // The stub at the Pages root carries the product title; the demo page beside
+     // it is titled as what it is, and carries the recast body copy.
+    expect(shipped('docs/index.html')).toContain(
+      'Lacre \u2014 tamper-evident receipts for what your agents report',
+    );
+    expect(shipped('docs/demo.html')).toContain(
+      'for signs that a record was changed, removed or reordered after it was signed',
+    );
+  });
+});
+
+/**
+ * Nothing invites a visitor onto a list that cannot take them (#264 follow-up).
+ *
+ * The waitlist posts to the contact route, which sends nothing while the EMAIL_*
+ * variables are unset. #264 made /pricing and /enterprise say so, and missed
+ * /checkout, which went on promising "Join the early access list and we will
+ * email you when bundles open" -- an invitation to do something impossible,
+ * on the page a visitor reaches when they try to buy.
+ *
+ * So the guard is a sweep rather than one more assertion on one more page: the
+ * defect was never specific to a page, and patching the third surface by hand
+ * would leave the fourth to be found by a customer.
+ *
+ * A *link* to the waitlist is fine and deliberately allowed. It lands on copy
+ * that says to email instead, which is a real next step. What may not survive is
+ * a promise that joining works.
+ */
+describe('no page invites a visitor onto a list that cannot take them', () => {
+  const EMAIL_KEYS = ['EMAIL_API_URL', 'EMAIL_API_KEY', 'EMAIL_FROM'] as const;
+
+  /** The promises that are false exactly when a submission reaches nobody. */
+  const PROMISES: readonly (readonly [RegExp, string])[] = [
+    [/we will email you/i, 'promises an email the deployment cannot send'],
+    [/leave your details/i, 'invites details nothing will store or forward'],
+    [/\bjoin the (early access )?list\b/i, 'invites joining a list that takes no entries'],
+    [/\bjoin the waitlist\b/i, 'invites joining a list that takes no entries'],
+  ];
+
+  async function renderedWithSendingOff(): Promise<Record<string, string>> {
+    const saved = EMAIL_KEYS.map((key) => [key, process.env[key]] as const);
+    for (const key of EMAIL_KEYS) delete process.env[key];
+    try {
+      expect(contactForwarding(), 'this suite only means anything while sending is off').toBe(false);
+      return {
+        checkout: renderToStaticMarkup(await CheckoutPage({ searchParams: Promise.resolve({}) })),
+        pricing: renderToStaticMarkup(await PricingPage({ searchParams: Promise.resolve({}) })),
+        home: renderToStaticMarkup(HomePage()),
+      };
+    } finally {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  }
+
+  it('makes no promise about the waitlist while nothing can be sent', async () => {
+    const pages = await renderedWithSendingOff();
+    for (const [name, html] of Object.entries(pages)) {
+      const body = text(html);
+      for (const [pattern, why] of PROMISES) {
+        expect(pattern.test(body), `/${name} ${why}: ${pattern}`).toBe(false);
+      }
+    }
+  });
+
+  it('still points somewhere a visitor can actually act', async () => {
+    const pages = await renderedWithSendingOff();
+    // The honest alternative, on the two pages that raise the subject at all.
+    expect(text(pages.pricing!)).toContain('hello@lacre.dev');
+    expect(text(pages.checkout!)).toContain('hello@lacre.dev');
+  });
+});
 
 describe('Cloud is never described as working', () => {
   it('no page says Cloud anchors, exports or batches in the present tense', () => {

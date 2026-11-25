@@ -1,5 +1,7 @@
-# Landing page for Lacre — https://jaredklopstein.github.io/lacre
-# Nothing here is private: the page is a public explainer with a demo chain.
+# Older docs landing for Lacre. The product site is https://lacre.dev and the
+# root of this host is a redirect stub pointing at it (#260); the interactive
+# demo at /lacre/demo.html is the only page here with content of its own.
+# Nothing here is private.
 User-agent: *
 Allow: /
 

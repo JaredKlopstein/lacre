@@ -50,7 +50,10 @@ function cards(html: string) {
   return [...html.matchAll(/<article data-tier="([^"]+)">([\s\S]*?)<\/article>/g)].map(([, id, body]) => ({
     id,
     title: unescape(/<h2>([^<]*)<\/h2>/.exec(body!)?.[1] ?? ''),
-    price: unescape(/<\/h2><p>([^<]*)<\/p>/.exec(body!)?.[1] ?? ''),
+    // The first <p> carrying no attributes. The status line now comes between the
+    // heading and the price (#258) and every other paragraph on a card is tagged,
+    // so this still picks out the price and nothing else.
+    price: unescape(/<p>([^<]*)<\/p>/.exec(body!)?.[1] ?? ''),
     terms: [...body!.matchAll(/<li>([^<]*)<\/li>/g)].map((m) => unescape(m[1]!)),
     html: body!,
   }));
@@ -130,12 +133,12 @@ describe('pricing cards', () => {
   });
 
   it('prices the evidence bundle from PAYG_BUNDLE_PRICE_USD', async () => {
-    expect(card(await render(), 'bundle').price).toBe(`$${PAYG_BUNDLE_PRICE_USD} each`);
+    expect(card(await render(), 'bundle').price).toBe(`Planned: $${PAYG_BUNDLE_PRICE_USD} each`);
   });
 
   it('prices Cloud from PLANS per billing period', async () => {
-    expect(card(await render(), 'cloud').price).toBe(`$${cloud.monthlyUsd}/mo`);
-    expect(card(await render('annual'), 'cloud').price).toBe(`$${cloud.annualUsd}/yr`);
+    expect(card(await render(), 'cloud').price).toBe(`Planned: $${cloud.monthlyUsd}/mo`);
+    expect(card(await render('annual'), 'cloud').price).toBe(`Planned: $${cloud.annualUsd}/yr`);
   });
 
   it('lists every Cloud term with the PLANS values, and no term is missing', async () => {
@@ -147,7 +150,7 @@ describe('pricing cards', () => {
   });
 
   it('matches the bundle and Cloud cards on the Pages site', async () => {
-    const pages = readFileSync(new URL('../../../docs/index.html', import.meta.url), 'utf8');
+    const pages = readFileSync(new URL('../../../docs/demo.html', import.meta.url), 'utf8');
     const pagesCard = (tier: string) => {
       const body = new RegExp(`data-tier="${tier}">([\\s\\S]*?)</ul>`).exec(pages)?.[1] ?? '';
       const plain = (s: string) => unescape(s.replace(/&nbsp;/g, ' ')).trim();
@@ -158,8 +161,21 @@ describe('pricing cards', () => {
     };
     const monthly = await render();
     const annual = await render('annual');
-    expect(card(monthly, 'bundle').price).toBe(pagesCard('bundle').price);
-    expect(`${card(monthly, 'cloud').price} or ${card(annual, 'cloud').price}`).toBe(pagesCard('cloud').price);
+    /*
+     * The figures, not the framing. While the sale gate is shut the site prefixes a
+     * card's price with "Planned:" (#258) and the Pages landing says the same thing
+     * its own way, in the "Not open yet" line above its cards. What must not drift is
+     * the numbers: two surfaces quoting different prices for the same product is the
+     * defect this guards, and stripping a known prefix keeps it guarding that.
+     */
+    const figure = (price: string) => price.replace(/^Planned: /, '');
+    expect(figure(card(monthly, 'bundle').price)).toBe(pagesCard('bundle').price);
+    expect(`${figure(card(monthly, 'cloud').price)} or ${figure(card(annual, 'cloud').price)}`).toBe(
+      pagesCard('cloud').price,
+    );
+    // And the site does mark them as planned, so the prefix above is never vacuous.
+    expect(card(monthly, 'bundle').price).toMatch(/^Planned: /);
+    expect(card(monthly, 'cloud').price).toMatch(/^Planned: /);
     expect(card(monthly, 'cloud').terms).toEqual(pagesCard('cloud').terms);
   });
 
@@ -226,7 +242,7 @@ describe('calls to action (#94)', () => {
       expect(ctas).toEqual({
         core: [{ label: 'Start free', href: getStarted }],
         bundle: [{ label: 'Tell me when bundles open', href: '/pricing#waitlist' }],
-        cloud: [{ label: 'Join the waitlist', href: '/pricing#waitlist' }],
+        cloud: [{ label: 'Tell me when Cloud opens', href: '/pricing#waitlist' }],
         enterprise: [{ label: 'Contact the team', href: '/enterprise' }],
       });
       for (const c of cards(html)) {
@@ -249,7 +265,7 @@ describe('calls to action (#94)', () => {
   it('points the Cloud button at /pricing#waitlist and never at checkout, monthly or annual', async () => {
     for (const billing of ['monthly', 'annual'] as const) {
       const cta = priceCards(billing).find((c) => c.id === 'cloud')!.cta;
-      expect(cta).toEqual({ label: 'Join the waitlist', href: '/pricing#waitlist' });
+      expect(cta).toEqual({ label: 'Tell me when Cloud opens', href: '/pricing#waitlist' });
       const html = card(await render(billing), 'cloud').html;
       expect(hrefs(html).filter((h) => !h.startsWith('/pricing?') && h !== '/pricing')).toEqual(['/pricing#waitlist']);
       // No link or form on the Cloud card may go to checkout. Its billing toggle only reloads /pricing.
@@ -262,7 +278,7 @@ describe('calls to action (#94)', () => {
 
   it('gives any off-sale card the waitlist button, never a checkout link', () => {
     for (const id of ['core', 'bundle', 'cloud', 'enterprise'] as const) {
-      expect(cardCta(id, true)).toEqual({ label: 'Join the waitlist', href: WAITLIST_HREF });
+      expect(cardCta(id, true)).toEqual({ label: 'Tell me when Cloud opens', href: WAITLIST_HREF });
     }
     // With bundles on sale, only an off-sale card points at the waitlist.
     for (const c of [...priceCards('monthly', { bundleOpen: true }), ...priceCards('annual', { bundleOpen: true })]) {
@@ -277,7 +293,7 @@ describe('calls to action (#94)', () => {
       expect(html.match(/\bid="waitlist"/g)).toHaveLength(1);
       // Persona review: out of the Cloud card and its <details>, so opening it never stretches the grid.
       expect(html).toMatch(
-        /<section id="waitlist" aria-labelledby="waitlist-heading"><h2 id="waitlist-heading">Join the early access list<\/h2><p>[^<]+<\/p><form aria-label="Early access waitlist"/,
+        /<section id="waitlist" aria-labelledby="waitlist-heading"><h2 id="waitlist-heading">[^<]*<\/h2><p>[\s\S]*?<\/p><form aria-label="Early access waitlist"/,
       );
       expect(html.indexOf('id="waitlist"')).toBeGreaterThan(html.indexOf('</section>', html.indexOf('aria-label="Plans"')));
     }
@@ -344,7 +360,7 @@ describe('billing toggle', () => {
   });
 
   it('treats an unknown billing value as monthly', async () => {
-    expect(card(await render('weekly'), 'cloud').price).toBe(`$${cloud.monthlyUsd}/mo`);
+    expect(card(await render('weekly'), 'cloud').price).toBe(`Planned: $${cloud.monthlyUsd}/mo`);
   });
 
   it('shows the pricing-page overage disclosure under Annual, in the future tense while Cloud is off sale (#100, 13)', async () => {
@@ -393,7 +409,7 @@ describe('pricing content (#100)', () => {
     expect(annualSavingsLine()).toBe(`${months} months free against 12 monthly payments`);
     expect(annualSavingsLine()).toMatch(/^2 months free/);
     const annualCloud = card(await render('annual'), 'cloud').html;
-    expect(annualCloud).toContain(`<p>$${cloud.annualUsd}/yr</p><p data-price-note="true">${annualSavingsLine()}</p>`);
+    expect(annualCloud).toContain(`<p>Planned: $${cloud.annualUsd}/yr</p><p data-price-note="true">${annualSavingsLine()}</p>`);
     expect(await render()).not.toContain('months free');
   });
 
@@ -472,7 +488,7 @@ describe('pricing content (#100)', () => {
       const bundle = card(html, 'bundle');
       // The free first bundle sits under the price, then the badge.
       expect(bundle.html).toContain(
-        `<h2>Evidence bundle</h2><p>${bundle.price}</p><p data-price-note="true">First bundle free</p><p data-badge="true">Opens soon</p>`,
+        `<p>${bundle.price}</p><p data-price-note="true">First bundle free</p><p data-badge="true">Opens soon</p>`,
       );
       expect(html.match(/data-badge/g)).toHaveLength(1);
       // Cloud still says Early access, in its status line rather than a pill.

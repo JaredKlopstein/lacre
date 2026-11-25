@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { BRAND } from '../../src/brand';
-import { CONTACT_PATH, FLEET_SIZES } from '../../src/contact';
+import { CONTACT_CODES, CONTACT_PATH, FLEET_SIZES } from '../../src/contact';
 
 /**
  * The early-access waitlist. It posts JSON to the existing contact route with
@@ -50,7 +50,15 @@ export const WAITLIST_ALERT_ID = 'waitlist-alert';
 // The contact route's format check for an email: one @, no spaces, a dotted domain ending in a 2+ letter TLD.
 const EMAIL = /^[^\s@<>()[\]",;:]+@[^\s@<>()[\]",;:]+\.[A-Za-z]{2,}$/;
 
-export type WaitlistResult = 'sent' | 'invalid' | 'too_large' | 'rate_limited' | 'failed' | 'unavailable' | 'error';
+export type WaitlistResult =
+  | 'sent'
+  | 'invalid'
+  | 'too_large'
+  | 'rate_limited'
+  | 'failed'
+  | 'not_configured'
+  | 'unavailable'
+  | 'error';
 
 const RESULT_MESSAGES: Record<WaitlistResult, string> = {
   sent: "Thanks. You're on the early access list, and we'll email you when it opens.",
@@ -58,12 +66,16 @@ const RESULT_MESSAGES: Record<WaitlistResult, string> = {
   too_large: 'That message is too long, so nothing was sent. Shorten it and send it again.',
   rate_limited: 'Several messages were sent from here in a short time, so this one was not sent. Please try again in a few minutes.',
   failed: 'Your request could not be delivered, so nothing was sent. Try again shortly.',
+  // Not "try again in a few minutes": until the site is configured to send, no
+  // amount of waiting makes this list reachable. The fallback sentence below
+  // offers the way in that does work.
+  not_configured: 'The waitlist is not able to take entries yet, so nothing was sent, and trying again will not change that.',
   unavailable: 'The waitlist is unavailable right now, so nothing was sent. Try again in a few minutes.',
   error: 'Something went wrong, so nothing may have been sent. Try again shortly.',
 };
 
 /** Results where nothing reached the team for a reason that is not what was typed: another way in is offered. */
-export const WAITLIST_FALLBACK_RESULTS: readonly WaitlistResult[] = ['failed', 'unavailable', 'error'];
+export const WAITLIST_FALLBACK_RESULTS: readonly WaitlistResult[] = ['failed', 'not_configured', 'unavailable', 'error'];
 
 /** The JSON body for the contact route: exactly WAITLIST_FIELDS, each a string. */
 export function waitlistBody(values: { get(key: string): unknown }): Record<WaitlistField, string> {
@@ -82,7 +94,7 @@ export function waitlistResult(status: number, code: unknown): WaitlistResult {
   if (status === 413) return 'too_large';
   if (status === 429) return 'rate_limited';
   if (status === 502) return 'failed';
-  if (status === 503) return 'unavailable';
+  if (status === 503) return code === CONTACT_CODES.notConfigured ? 'not_configured' : 'unavailable';
   return 'error';
 }
 
@@ -114,7 +126,13 @@ interface Shown {
   readonly fields: readonly WaitlistField[];
 }
 
-export function WaitlistForm({ need = WAITLIST_NEED }: { need?: string }) {
+/**
+ * `closed` is for the deployment that cannot forward a submission anywhere: the
+ * route would answer `not_configured`, so the button stays disabled instead of
+ * inviting an entry that goes nowhere. It is a separate reason from `!ready`,
+ * which is only ever about hydration and clears by itself.
+ */
+export function WaitlistForm({ need = WAITLIST_NEED, closed = false }: { need?: string; closed?: boolean }) {
   // Submitting is only possible once hydrated, so the form never falls back to
   // a native submission that would put the fields in the page URL.
   const [ready, setReady] = useState(false);
@@ -223,8 +241,9 @@ export function WaitlistForm({ need = WAITLIST_NEED }: { need?: string }) {
         />
       </p>
       <p>
-        <button type="submit" disabled={!ready} aria-disabled={sending || undefined}>
-          {sending ? 'Sending…' : 'Join the list'}
+        <button type="submit" disabled={!ready || closed} aria-disabled={sending || undefined}>
+          {/* A disabled button still has to say why it is disabled, not invite the click. */}
+          {closed ? 'Sign-ups are closed' : sending ? 'Sending…' : 'Join the list'}
         </button>
       </p>
       <div ref={resultsRef}>

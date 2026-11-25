@@ -67,7 +67,7 @@ function checkoutEvent() {
       object: {
         id: 'cs_test_route', object: 'checkout.session', mode: 'subscription', payment_status: 'paid', status: 'complete',
         customer: CUSTOMER, subscription: SUBSCRIPTION, payment_intent: null, client_reference_id: null,
-        metadata: { provenant_plan: 'cloud', provenant_interval: 'month' },
+        metadata: { lacre_plan: 'cloud', lacre_interval: 'month' },
       },
     },
   };
@@ -80,7 +80,7 @@ function subscriptionEvent(type: 'customer.subscription.created' | 'customer.sub
     data: {
       object: {
         id: SUBSCRIPTION, object: 'subscription', customer: CUSTOMER, status,
-        metadata: { provenant_plan: 'cloud', provenant_interval: 'month' },
+        metadata: { lacre_plan: 'cloud', lacre_interval: 'month' },
         items: {
           object: 'list',
           data: [{

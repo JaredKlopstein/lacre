@@ -22,12 +22,14 @@ import {
   waitlistResult,
 } from '../app/pricing/waitlist-form.js';
 import { usedTokenSchema } from '../src/auth/used-tokens.js';
-import { CONTACT_PATH, FLEET_SIZES, HONEYPOT_FIELD } from '../src/contact.js';
+import { CONTACT_CODES, CONTACT_PATH, FLEET_SIZES, HONEYPOT_FIELD } from '../src/contact.js';
+import { LEGAL } from '../src/legal.js';
 
 /**
  * The Cloud waitlist form posts to the existing contact route with that route's
- * keys. The route runs for real here with the forward mocked; the rate limit's
- * Postgres is PGlite, in process, as in contact.test.ts.
+ * keys. The route runs for real here with the email send mocked; the rate
+ * limit's Postgres is PGlite, in process, as in contact.test.ts. No value below
+ * is a real credential.
  */
 
 const pgHolder = vi.hoisted(() => ({ db: null as unknown }));
@@ -35,7 +37,12 @@ vi.mock('drizzle-orm/neon-serverless', () => ({ drizzle: vi.fn(() => pgHolder.db
 
 const RATE_MIGRATION = new URL('../migrations/0001_magic_link_rate.sql', import.meta.url);
 const DATABASE_URL = ['postgresql:', '', 'test-user:test-password@db.site.test', 'site'].join('/');
-const FORWARD_URL = 'https://forward.example.test/waitlist';
+/** The three variables the route's send needs. Fixtures, not credentials. */
+const EMAIL_ENV = {
+  EMAIL_API_URL: 'https://provider.example.test/emails',
+  EMAIL_API_KEY: 'fixture-not-a-real-key-0000',
+  EMAIL_FROM: 'site@site.test',
+} as const;
 
 let pg: PGlite;
 let fetchMock: Mock;
@@ -54,7 +61,7 @@ beforeEach(async () => {
   fetchMock = vi.fn(async () => new Response('ok', { status: 200 }));
   vi.stubGlobal('fetch', fetchMock);
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  vi.stubEnv('CONTACT_FORWARD_URL', FORWARD_URL);
+  for (const [name, value] of Object.entries(EMAIL_ENV)) vi.stubEnv(name, value);
   vi.stubEnv('DATABASE_URL', DATABASE_URL);
 });
 
@@ -135,9 +142,16 @@ describe('waitlist result, announced (persona review: Sam 2, Marcus 9)', () => {
     expect(html.indexOf('<button')).toBeLessThan(html.indexOf(alert));
   });
 
+  /**
+   * The invariant is the line below that forbids `sending` in the disabled
+   * expression: a button that goes disabled mid-submit drops the focus that was on
+   * it. `closed` is a different thing and is allowed -- it is known before render,
+   * never changes while the person is interacting, and marks a waitlist that cannot
+   * take an entry at all (#258). `aria-disabled` still carries the sending state.
+   */
   it('never disables the button once interactive, so focus is not dropped while sending', () => {
     const src = readFileSync(new URL('../app/pricing/waitlist-form.tsx', import.meta.url), 'utf8');
-    expect(src).toContain('disabled={!ready}');
+    expect(src).toContain('disabled={!ready || closed}');
     expect(src).toContain('aria-disabled={sending || undefined}');
     expect(src).not.toMatch(/\sdisabled=\{[^}]*sending/);
     expect(src).toContain("scrollIntoView({ block: 'nearest' })");
@@ -168,7 +182,7 @@ describe('waitlist result, announced (persona review: Sam 2, Marcus 9)', () => {
   });
 
   it('offers the public repository as a link when nothing reached the team, and invents no email', () => {
-    expect([...WAITLIST_FALLBACK_RESULTS]).toEqual(['failed', 'unavailable', 'error']);
+    expect([...WAITLIST_FALLBACK_RESULTS]).toEqual(['failed', 'not_configured', 'unavailable', 'error']);
     const src = readFileSync(new URL('../app/pricing/waitlist-form.tsx', import.meta.url), 'utf8');
     expect(src).toContain('<a href={BRAND.repository}>');
     expect(src).not.toMatch(/mailto:|@[a-z0-9-]+\.[a-z]{2,}/i);
@@ -176,7 +190,7 @@ describe('waitlist result, announced (persona review: Sam 2, Marcus 9)', () => {
 });
 
 describe('waitlist body against the contact route', () => {
-  it('passes validation and forwards once', async () => {
+  it('passes validation and is emailed once, with every value it typed', async () => {
     const body = filled({
       name: 'Ada Lovelace',
       email: 'ada@example.com',
@@ -189,8 +203,11 @@ describe('waitlist body against the contact route', () => {
     expect(waitlistResult(res.status, undefined)).toBe('sent');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(FORWARD_URL);
-    expect(JSON.parse(String(init.body))).toMatchObject(body);
+    expect(url).toBe(EMAIL_ENV.EMAIL_API_URL);
+    const sent = JSON.parse(String(init.body));
+    // One route, one destination: the address the Privacy Policy publishes.
+    expect(sent.to).toBe(LEGAL.contactEmail);
+    for (const [key, value] of Object.entries(body)) expect(sent.text, key).toContain(String(value));
   });
 
   it('passes at every maximum length', async () => {
@@ -224,7 +241,10 @@ describe('waitlist result', () => {
     expect(waitlistResult(413, 'BODY_TOO_LARGE')).toBe('too_large');
     expect(waitlistResult(429, 'RATE_LIMITED')).toBe('rate_limited');
     expect(waitlistResult(502, 'CONTACT_FORWARD_FAILED')).toBe('failed');
-    expect(waitlistResult(503, 'CONTACT_UNAVAILABLE')).toBe('unavailable');
+    expect(waitlistResult(503, CONTACT_CODES.unavailable)).toBe('unavailable');
+    // Both 503s, told apart by the code, because only one of them can be waited out.
+    expect(waitlistResult(503, CONTACT_CODES.notConfigured)).toBe('not_configured');
+    expect(waitlistResult(503, undefined)).toBe('unavailable');
     expect(waitlistResult(500, undefined)).toBe('error');
   });
 
@@ -234,5 +254,42 @@ describe('waitlist result', () => {
     expect(src).toContain('fetch(CONTACT_PATH,');
     expect(src).toContain("'content-type': 'application/json'");
     expect(src).not.toMatch(/\.message\b/);
+  });
+});
+
+/**
+ * The waitlist reads the route's answer, so the sentence it shows has to come
+ * from what the route actually returns for the state the site is in.
+ *
+ * Until the owner configures the email provider, this is the only answer the
+ * waitlist receives: before the fix it said "The waitlist is unavailable right
+ * now... Try again in a few minutes", which no amount of waiting would have
+ * made true. The route is run for real here and its answer is fed to the same
+ * function the component calls.
+ */
+describe('the waitlist tells the truth when the site cannot send at all', () => {
+  it('reads not_configured from the route\'s own answer, and offers the repository instead of a retry', async () => {
+    vi.stubEnv('EMAIL_API_KEY', '');
+    const res = await postToRoute(
+      filled({ name: 'Ada', email: 'ada@example.com', company: 'Analytical Engines Ltd', fleetSize: FLEET_SIZES[1], need: WAITLIST_NEED }),
+    );
+    expect(res.status).toBe(503);
+    const { error } = await res.json();
+    expect(error.retryable).toBe(false);
+    const result = waitlistResult(res.status, error.code);
+    expect(result).toBe('not_configured');
+    // Nothing was sent, so the claim "we'll email you when it opens" was never earned.
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const shown = renderToStaticMarkup(createElement(WaitlistForm, {}));
+    expect(shown).toContain(`id="${WAITLIST_ALERT_ID}"`);
+    // The sentence for this result, read from the component's own source so the
+    // assertion cannot pass against copy the component does not use.
+    const src = readFileSync(new URL('../app/pricing/waitlist-form.tsx', import.meta.url), 'utf8');
+    const sentence = new RegExp(`${result}:\\s*'([^']+)'`).exec(src)?.[1];
+    expect(sentence, src).toBeDefined();
+    expect(sentence).not.toMatch(/try again|retry/i);
+    expect(sentence).toContain('will not change that');
+    expect(WAITLIST_FALLBACK_RESULTS).toContain(result);
   });
 });

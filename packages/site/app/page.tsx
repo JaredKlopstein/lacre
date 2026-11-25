@@ -20,7 +20,17 @@ import { StandardsStrip } from '../src/standards-strip';
 import styles from '../src/hero.module.css';
 
 export const metadata: Metadata = {
-  description: `${BRAND.name}: tamper-evident receipts for AI agents.`,
+  /*
+   * The description said only what the title says. It now names who the page is
+   * for and what they get, in the page's own words: the eyebrow line, the first
+   * proof point and the anchoring one. Nothing here is a claim the page does not
+   * already make (#256).
+   */
+  description:
+    'For teams running AI agents that touch money, mail or customer data. Every consequential action gets a ' +
+    'signed, hash-chained receipt. Anchor the chain with an RFC 3161 timestamp, and anyone with the bundle can ' +
+    'check offline that the record has not changed since.',
+  alternates: { canonical: '/' },
 };
 
 const PROOF_POINTS = [
@@ -30,7 +40,8 @@ const PROOF_POINTS = [
   },
   {
     title: 'RFC 3161 anchoring',
-    body: 'When you anchor (with an evidence bundle), the chain head is timestamped by an RFC 3161 timestamp authority the operator does not control, so the record up to that point cannot be quietly rewritten or backdated.',
+    body:
+      'When you anchor (with an evidence bundle), the chain head is timestamped by an RFC 3161 timestamp authority. When that authority is independent of the operator, the timestamp shows the chain head existed by that time, so a later change to any record before it is detectable. Records added after the last anchor aren’t covered until the next one.',
   },
   {
     title: 'Free offline verifier',
@@ -50,10 +61,14 @@ export default function HomePage() {
       <section aria-labelledby="hero-title" className={styles.hero}>
         <div className={styles.copy}>
           <span className="eyebrow">For teams running AI agents that touch money, mail or customer data</span>
-          <h1 id="hero-title">Your agent says it refunded $42.50. Prove it.</h1>
+          <h1 id="hero-title">
+            Your agent says it refunded $42.50. Get a signed, tamper-evident record of what it reported.
+          </h1>
           <p className={styles.lede}>
-            Every consequential action gets a signed, hash-chained receipt. Anchor the chain with a timestamp from
-            an authority you don’t control, and anyone can verify the record offline, without trusting you.
+            Every consequential action gets a signed, hash-chained receipt. Anchor the chain with a timestamp
+            from an authority you don’t control, and anyone with the bundle can check offline that the record
+            hasn’t changed since it was anchored, without running your systems. They should still confirm your
+            agents’ keys and choose which timestamp authority to trust.
           </p>
           {/* Links styled as buttons through this wrapper, so the anchors themselves stay plain. */}
           <p className={styles.ctas}>
@@ -84,7 +99,10 @@ export default function HomePage() {
         </ul>
       </section>
       <section aria-labelledby="proof-table-title">
-        <h2 id="proof-table-title">Once anchored, history up to the anchor can’t be rewritten: not by your agents, and not by you.</h2>
+        <h2 id="proof-table-title">
+          Once anchored, any change to history up to the anchor is detected: by anyone holding the bundle,
+          whether the change came from your agents or from you.
+        </h2>
         <p>
           Before an anchor, a chain is self-attested: it proves internal consistency, not that history was left
           alone. The table shows exactly where the line falls.
@@ -142,7 +160,7 @@ export default function HomePage() {
         {OFF_SALE_PLANS.has('cloud') ? (
           <p>
             <strong>Cloud: {EARLY_ACCESS_LABEL.toLowerCase()}.</strong> Continuous anchoring is planned, not available
-            yet. <Link href={WAITLIST_HREF}>Join the waitlist</Link>.
+            yet. <Link href={WAITLIST_HREF}>Tell me when Cloud opens</Link>.
           </p>
         ) : null}
         <p className={styles.ctas}>

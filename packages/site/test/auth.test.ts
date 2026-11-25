@@ -22,6 +22,7 @@ import {
   verifyLinkToken,
 } from '../src/auth/session.js';
 import { usedTokenSchema } from '../src/auth/used-tokens.js';
+import { withoutBrandDomain } from './brand-domain.js';
 
 /**
  * Magic-link signup: the send route, the callback, the session cookie and the
@@ -58,7 +59,9 @@ const DAY = 24 * 60 * MINUTE;
 let fetchMock: Mock;
 let logged: string[];
 
+let restoreBrandDomain: (() => void) | null = null;
 beforeEach(async () => {
+  restoreBrandDomain = withoutBrandDomain();
   // Each test starts with fresh send counts; rate-limit.test.ts covers the limits.
   await pg.exec('TRUNCATE site_magic_link_rate, site_magic_link_used');
   fetchMock = vi.fn(async () => new Response('{"id":"test-message"}', { status: 200 }));
@@ -80,6 +83,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  restoreBrandDomain?.();
+  restoreBrandDomain = null;
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
@@ -172,7 +177,7 @@ async function expectUnavailable(res: Response, status: number, cause: string): 
   const everything = [...res.headers].map(([k, v]) => `${k}: ${v}`).join('\n') + '\n' + body;
   for (const name of NAMES) expect(everything).not.toContain(name);
   if (status !== 303) {
-    expect(body).toContain('Sign-in is unavailable right now.');
+    expect(body).toContain('Email sign-in is not configured on this server yet.');
     expect(body).toContain(requestId);
   }
   expect(logged.find((line) => line.includes(requestId!))).toContain(cause);
@@ -394,6 +399,23 @@ describe('link base', () => {
     vi.stubEnv('VERCEL_URL', 'preview.example.test');
     await sendJson({ email: 'ada@example.com' });
     expect(sentLink().origin).toBe('https://brand.example.test');
+  });
+
+  /**
+   * The shipped value, not a stand-in. Every other test here detaches the domain
+   * to exercise the environment branches, so without this one nothing would
+   * notice if the attached domain were wrong or removed. A sign-in link is the
+   * one the user clicks from their inbox, so the host has to be the real one.
+   */
+  it('sends the emailed link to the attached domain, with nothing from the environment', async () => {
+    restoreBrandDomain?.();
+    restoreBrandDomain = null;
+    vi.stubEnv('SITE_BASE_URL', '');
+    vi.stubEnv('VERCEL_URL', 'preview.example.test');
+    expect(BRAND.domain).toBe('lacre.dev');
+    await sendJson({ email: 'ada@example.com' });
+    expect(sentLink().origin).toBe('https://lacre.dev');
+    expect(sentEmail().text).not.toContain('preview.example.test');
   });
 
   it('uses SITE_BASE_URL next, ahead of VERCEL_URL', async () => {
@@ -781,5 +803,62 @@ describe('signup page', () => {
     expect(await render('unavailable')).toContain('not open yet');
     expect(await render('<script>')).not.toMatch(/role="(status|alert)"/);
     expect(await render()).not.toMatch(/role="(status|alert)"/);
+  });
+});
+
+/**
+ * The answer a caller gets must not suggest waiting when waiting cannot help.
+ *
+ * Every cause this route answers 503 for is a configuration gap, and the payload
+ * has always said so with retryable: false -- but the message read "Sign-in is
+ * unavailable right now", which is the wording of something transient. The page
+ * a person sees was already honest ("Email sign-up is not open yet, so nothing
+ * was sent"); only the JSON disagreed, so only an API caller was misled. It is
+ * the same contradiction PR #238 fixed on the contact route next door.
+ *
+ * Each cause below is driven through the real route, and the rule is read off
+ * the answer itself rather than written down: where the route says a retry
+ * cannot work, the sentence it sends must not offer one.
+ */
+describe('a sign-in answer offers a retry only where one could work', () => {
+  const CAUSES: Record<string, () => void> = {
+    'sending is switched off': () => void vi.stubEnv('MAGIC_LINK_ENABLED', '0'),
+    'the email provider is not configured': () => void vi.stubEnv('EMAIL_API_KEY', ''),
+    'there is no link base': () => {
+      vi.stubEnv('SITE_BASE_URL', '');
+      vi.stubEnv('VERCEL_URL', '');
+    },
+    'the send rate limit has no database': () => void vi.stubEnv('DATABASE_URL', ''),
+  };
+
+  it.each(Object.keys(CAUSES))('%s', async (name) => {
+    CAUSES[name]!();
+    const res = await sendJson({ email: 'ada@example.com' });
+    expect(res.status, name).toBe(503);
+    const { error } = await res.clone().json();
+    expect(error.code).toBe('SIGNUP_UNAVAILABLE');
+    // The route's own claim about whether waiting helps.
+    expect(error.retryable, name).toBe(false);
+    const said = `${error.message} ${error.fix?.note ?? ''}`;
+    expect(said, `${name}: ${said}`).not.toMatch(/try again|retry|right now|shortly|in a few minutes/i);
+    // And it still says what would actually make sign-in work.
+    expect(error.fix.note).toContain('finish the server configuration');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('says the same thing the page says, so the two surfaces cannot drift apart', async () => {
+    vi.stubEnv('MAGIC_LINK_ENABLED', '0');
+    const { error } = await (await sendJson({ email: 'ada@example.com' })).json();
+    // The page's sentence for this outcome, read from its own source rather than
+    // copied here, so this cannot pass against copy the page does not use.
+    const page = readFileSync(new URL('../app/signup/page.tsx', import.meta.url), 'utf8');
+    const shown = /unavailable:\s*'([^']+)'/.exec(page)?.[1];
+    expect(shown, page.slice(0, 200)).toBeDefined();
+    expect(shown).not.toMatch(/try again|retry|right now|shortly/i);
+    // Both say it is a state the operator has to change, not a moment to wait out.
+    for (const sentence of [error.message, shown!]) {
+      expect(sentence).toMatch(/not (configured|open)/i);
+      expect(sentence).toMatch(/nothing was sent/i);
+    }
   });
 });

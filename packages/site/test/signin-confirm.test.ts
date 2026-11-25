@@ -11,6 +11,7 @@ const metadata = await generateMetadata({ searchParams: Promise.resolve({}) });
 import { SIGNUP_PATH } from '../src/auth/email.js';
 import { CALLBACK_PATH, CHECKOUT_PATH, CONFIRM_PATH, SESSION_COOKIE, createLinkToken } from '../src/auth/session.js';
 import { usedTokenSchema } from '../src/auth/used-tokens.js';
+import { withoutBrandDomain } from './brand-domain.js';
 
 /**
  * #89: opening a magic link (GET) only shows a confirm page; only the page's POST
@@ -38,7 +39,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await pg.close();
 });
+let restoreBrandDomain: (() => void) | null = null;
 beforeEach(async () => {
+  restoreBrandDomain = withoutBrandDomain();
   await pg.exec('TRUNCATE site_magic_link_used, site_magic_link_rate');
   for (const level of ['error', 'warn', 'log', 'info', 'debug'] as const) vi.spyOn(console, level).mockImplementation(() => {});
   vi.stubEnv('SESSION_SECRET', SECRET);
@@ -50,6 +53,8 @@ beforeEach(async () => {
   vi.stubEnv('DATABASE_URL', 'postgresql://test-user:test-password@db.site.test/site');
 });
 afterEach(() => {
+  restoreBrandDomain?.();
+  restoreBrandDomain = null;
   vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();

@@ -4,9 +4,15 @@ import type { ReactNode } from 'react';
 import { BRAND } from '../../src/brand';
 import { CONTACT_OUTCOMES, CONTACT_PATH, FLEET_SIZES, HONEYPOT_FIELD, type ContactOutcome } from '../../src/contact';
 import { AnnounceOutcome, KeepFields } from '../../src/form-outcome';
+import { contactForwarding } from '../../src/contact-forwarding';
+import { HowToHear } from '../../src/how-to-hear';
 
 const TITLE = 'Enterprise';
 const METADATA: Metadata = {
+  // generateMetadata only ever varies the title, so the canonical set here
+  // survives every outcome redirect: /enterprise?contact=sent must not become a
+  // second indexable URL.
+  alternates: { canonical: '/enterprise' },
   title: TITLE,
   description: `Talk to the ${BRAND.name} team about Enterprise: retention, anchoring cadence and volume set by contract.`,
 };
@@ -39,6 +45,15 @@ const repositoryLink = (
 const OUTCOME_MESSAGES: Record<ContactOutcome, ReactNode> = {
   sent: `Thanks. The ${BRAND.name} team has your message and will reply to the email you gave.`,
   invalid: 'Some details were missing or not valid, so nothing was sent. Check each field and send it again.',
+  // No "try again": the form cannot send from this deployment until the operator
+  // configures it, so a retry would fail the same way for as long as a visitor
+  // is willing to keep trying. The one way in that does work is offered instead.
+  not_configured: (
+    <>
+      This form is not able to send messages yet, so nothing was sent, and trying again will not change
+      that. Reach the team through {repositoryLink}, where issues are public.
+    </>
+  ),
   unavailable: (
     <>
       The contact form is unavailable right now, so nothing was sent. Try again in a few minutes, or reach the team
@@ -58,6 +73,7 @@ const OUTCOME_MESSAGES: Record<ContactOutcome, ReactNode> = {
 const OUTCOME_TITLES: Record<ContactOutcome, string> = {
   sent: 'Message sent',
   invalid: 'Error: check the marked fields',
+  not_configured: 'Contact form cannot send',
   unavailable: 'Contact form unavailable',
   failed: 'Error: message not delivered',
   rate_limited: 'Message not sent: too many sent',
@@ -106,8 +122,22 @@ export default async function EnterprisePage({ searchParams }: { searchParams: P
         <h1>Enterprise</h1>
         <p>
           For teams running agent fleets whose terms do not fit the Cloud plan. Enterprise is agreed
-          by contract, not bought through checkout, and it has no listed price. Tell us what you
-          need below. We reply within two business days.
+          by contract, not bought through checkout, and it has no listed price.{' '}
+          {/*
+            The form below posts to the contact route, which sends nothing while the
+            EMAIL_* variables are unset. Promising a reply in two business days to a
+            message that is never delivered is the overclaim; the address is given
+            instead, and the promise returns by itself once sending is configured.
+          */}
+          {contactForwarding() ? (
+            'Tell us what you need below. We reply within two business days.'
+          ) : (
+            <>
+              {`This form can't send messages yet. To reach us, `}
+              <HowToHear subject="Enterprise" purpose="reach" />
+              {'.'}
+            </>
+          )}
         </p>
         <ul>
           {TERMS.map((term) => (

@@ -39,10 +39,13 @@ describe('robots.txt', () => {
 describe('sitemap.xml', () => {
   const sitemap = read('sitemap.xml');
 
-  it('is a sitemap document listing the landing page', () => {
+  it('is a sitemap document listing the demo, not the stub at the root', () => {
     expect(sitemap.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
     expect(sitemap).toContain('xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"');
-    expect(sitemap).toContain(`<loc>${SITE}/</loc>`);
+    expect(sitemap).toContain(`<loc>${SITE}/demo.html</loc>`);
+    // The root canonicalises to lacre.dev, so listing it would ask a crawler to
+    // index a page it has been told to ignore.
+    expect(sitemap).not.toContain(`<loc>${SITE}/</loc>`);
   });
 });
 
@@ -63,8 +66,8 @@ describe('_headers', () => {
   });
 });
 
-describe('index.html', () => {
-  const html = read('index.html');
+describe('demo.html', () => {
+  const html = read('demo.html');
 
   it('declares the CSP a browser can honour from a meta tag', () => {
     expect(html).toMatch(
@@ -81,13 +84,19 @@ describe('index.html', () => {
   // lacre-site.vercel.app answered 404 on 2026-11-08: no Lacre site deployment is
   // serving. Until a canonical host is chosen and serving, the page names none and
   // sends readers to the repository, which is.
-  it('says the product is now Lacre and points at the repository, not at an unserved host', () => {
-    expect(html).toContain(`Provenant is now Lacre. Source and docs are at <a href="${REPOSITORY}">`);
-    expect(html).not.toMatch(/<link rel="canonical"/);
+  it('names the site and the repository, and does not pretend to be the product page', () => {
+    expect(html).toContain('This is the Lacre demo page.');
+    expect(html).toContain('<a href="https://lacre.dev/">lacre.dev</a>');
+    expect(html).toContain(`<a href="${REPOSITORY}">`);
+    // It canonicalises to itself: it is a real page with content of its own, and
+    // the root beside it is the one that points at lacre.dev.
+    expect(html).toContain(`<link rel="canonical" href="${SITE}/demo.html">`);
     expect(html).not.toMatch(/vercel\.app/);
   });
 
   it('never redirects on a timer, so the demo stays usable (WCAG 2.2.1)', () => {
+    // The stub at the root carries a 0-second refresh, which is a redirect and not
+    // a timed limit; see the block below. This page must carry none at all.
     expect(html).not.toMatch(/http-equiv="refresh"/i);
     expect(html).not.toMatch(/location\.(href|replace|assign)/);
   });
@@ -99,11 +108,18 @@ describe('index.html', () => {
   it('keeps the CSP compatible with what the page actually loads', () => {
     const csp = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(html)?.[1];
     expect(csp).toBeDefined();
-    // The page has an inline <style>, an inline <script> and Google-hosted fonts.
+    // The page has an inline <style> and an inline <script>, so both need 'unsafe-inline'.
     expect(csp).toContain("script-src 'self' 'unsafe-inline'");
-    expect(csp).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com");
-    expect(csp).toContain('font-src https://fonts.gstatic.com');
-    expect(html).toContain('https://fonts.googleapis.com/css2?');
+    expect(csp).toContain("style-src 'self' 'unsafe-inline'");
+    // It used to load its fonts from fonts.googleapis.com and fonts.gstatic.com, and
+    // this test pinned both hosts into the policy. The fonts are now served from
+    // docs/fonts, so no third party sees a visitor's IP and the policy needs no host
+    // at all. The same intent, so the assertion is inverted rather than dropped; what
+    // the page actually loads is derived from the markup in
+    // packages/site/test/pages-landing.test.ts rather than listed here.
+    expect(csp).toContain("font-src 'self'");
+    expect(csp).not.toMatch(/https?:\/\//);
+    expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
   });
 
   it('opens with a skip link to <main>, and keeps the moved banner inside the header landmark', () => {
@@ -138,8 +154,61 @@ describe('index.html', () => {
  * verbatim while paraphrasing; now they are real output, trimmed with … marks.
  * Every quoted sentence must still be one the tools actually print.
  */
-describe('terminal plates', () => {
+/**
+ * The root of the Pages host (#260). It used to be the product's public face;
+ * lacre.dev is now the site, so this page exists only to send people there.
+ *
+ * Three mechanisms, because no one of them reaches everyone: the canonical for
+ * crawlers, the refresh for browsers, and a visible link for anyone the refresh
+ * does not move. The refresh is 0 seconds, which is a redirect rather than a
+ * timed limit, so WCAG 2.2.1 does not apply -- and it is allowed on this page
+ * only, which is what the demo.html block above checks.
+ */
+describe('index.html: the redirect stub at the root', () => {
   const html = read('index.html');
+
+  it('canonicalises to lacre.dev, not to itself', () => {
+    expect(html).toContain('<link rel="canonical" href="https://lacre.dev/">');
+    expect(html).not.toMatch(/rel="canonical"[^>]*jaredklopstein\.github\.io/);
+  });
+
+  it('sends a browser there at once', () => {
+    expect(html).toContain('<meta http-equiv="refresh" content="0;url=https://lacre.dev/">');
+    // 0 seconds, never a delay: a delay would be a timed limit (WCAG 2.2.1).
+    const delays = [...html.matchAll(/http-equiv="refresh" content="(\d+)/gi)].map((m) => Number(m[1]));
+    expect(delays).toEqual([0]);
+  });
+
+  it('gives a visible link for anyone the refresh does not move', () => {
+    expect(html).toContain('<a href="https://lacre.dev/">Go to lacre.dev</a>');
+  });
+
+  it('keeps the demo reachable, where it now lives', () => {
+    expect(html).toContain('href="demo.html"');
+  });
+
+  it('asks not to be indexed, since its content is one sentence', () => {
+    expect(html).toContain('<meta name="robots" content="noindex, follow">');
+  });
+
+  it('loads nothing: no script, no font, no third-party host', () => {
+    expect(html).not.toMatch(/<script/i);
+    expect(html).not.toMatch(/@font-face/i);
+    const external = [...html.matchAll(/(?:src|href)="(https?:\/\/[^"]+)"/g)].map((m) => m[1]!);
+    for (const url of external) {
+      expect(url.startsWith('https://lacre.dev/') || url.startsWith(REPOSITORY), url).toBe(true);
+    }
+  });
+
+  it('declares the same kind of policy as the demo, since Pages sends no headers', () => {
+    expect(html).toMatch(/http-equiv="Content-Security-Policy"/i);
+    expect(html).toContain("default-src 'none'");
+    expect(html).toContain("frame-ancestors 'none'");
+  });
+});
+
+describe('terminal plates', () => {
+  const html = read('demo.html');
   const src = (path: string) => readFileSync(new URL(`../packages/${path}`, import.meta.url), 'utf8');
   const plates = [...html.matchAll(/<div class="plate">[\s\S]*?<pre>([\s\S]*?)<\/pre>/g)].map((m) =>
     m[1]!.replace(/<[^>]+>/g, ''),
@@ -180,7 +249,7 @@ describe('terminal plates', () => {
 });
 
 describe('Exhibit A on the landing page', () => {
-  const html = read('index.html');
+  const html = read('demo.html');
 
   it('does not imply its anchor can be checked from the page, and points at the sample bundle', () => {
     expect(html).not.toContain('These are three real receipts');
@@ -198,7 +267,7 @@ describe('Exhibit A on the landing page', () => {
  * somewhere else on the page.
  */
 describe('pricing cards', () => {
-  const html = read('index.html');
+  const html = read('demo.html');
 
   /** The markup of every card, keyed by its data-tier value. */
   function cards(): Map<string, string> {
@@ -292,8 +361,8 @@ describe('pricing cards', () => {
 
   it('offers the owner\'s published contact address, and no other contact route', () => {
     const enterprise = cards().get('enterprise')!;
-    expect(enterprise).toContain('<a href="mailto:contact@frontierforge.tech">contact@frontierforge.tech</a>');
-    expect(html.match(/mailto:[^"]+/g)).toEqual(['mailto:contact@frontierforge.tech']);
+    expect(enterprise).toContain('<a href="mailto:hello@lacre.dev">hello@lacre.dev</a>');
+    expect(html.match(/mailto:[^"]+/g)).toEqual(['mailto:hello@lacre.dev']);
   });
 
   it('says how a bundle arrives, and that the signing key never leaves the buyer', () => {
@@ -322,7 +391,7 @@ describe('pricing cards', () => {
  * than on the live demo.
  */
 describe('tamper demo DATA', () => {
-  const html = read('index.html');
+  const html = read('demo.html');
   const line = /^const DATA = (.*);$/m.exec(html)?.[1];
   const DATA = JSON.parse(line ?? 'null') as {
     anchor: { seq: number; head: string; time: string; authority: string };

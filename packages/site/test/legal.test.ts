@@ -11,6 +11,7 @@ import { BRAND } from '../src/brand.js';
 import { LEGAL, REQUIRED_FACTS, SECURITY_REPORT_URL, fact, missingFacts, type LegalFacts } from '../src/legal.js';
 import { buildSecurityTxt } from '../src/security-txt.js';
 import { bundleSale } from '../src/bundle-sale.js';
+import { withoutBrandDomain } from './brand-domain.js';
 
 /**
  * #96 (draft): Terms, Privacy, the footer's legal links and security.txt. The
@@ -33,6 +34,7 @@ const FILLED: LegalFacts = {
   contactRetention: '12 months',
   bundleRetention: '12 months',
   mailboxProvider: 'Example Mailbox',
+  contactProcessor: null,
 };
 
 const terms = () => renderToStaticMarkup(TermsPage());
@@ -40,14 +42,20 @@ const privacy = () => renderToStaticMarkup(PrivacyPage());
 
 /**
  * The facts the owner supplied (2026-11-10). The mailbox provider hosts the inbox
- * the owner named for chain files (contact@frontierforge.tech), as the owner
+ * the owner named for chain files (hello@lacre.dev), as the owner
  * confirmed.
+ *
+ * contactProcessor is the one entry here the owner did not name separately: the
+ * contact route sends its submissions through the same provider as the sign-in
+ * link, so whoever carries them is emailProvider. It is spelled out rather than
+ * referenced so this table stays a plain list of values, and the assertion below
+ * pins the two together.
  */
 const SUPPLIED: LegalFacts = {
   entityName: 'Ascella Studios LLC',
   entityJurisdiction: 'a Wisconsin limited liability company',
-  contactEmail: 'contact@frontierforge.tech',
-  securityEmail: 'contact@frontierforge.tech',
+  contactEmail: 'hello@lacre.dev',
+  securityEmail: 'hello@lacre.dev',
   postalAddress: '408 N Votech Drive, Watertown, WI 53098',
   effectiveDate: '2026-11-14',
   refundWindowDays: 30,
@@ -55,7 +63,11 @@ const SUPPLIED: LegalFacts = {
   emailProvider: 'Resend',
   contactRetention: '90 days',
   bundleRetention: '90 days',
-  mailboxProvider: 'Microsoft 365 (Exchange Online)',
+  // Moved with the contact address on 2026-11-20 (#254): lacre.dev's MX is
+  // smtp.google.com, where frontierforge.tech's was Microsoft's. See
+  // test/contact-address.test.ts, which holds the address and this together.
+  mailboxProvider: 'Google Workspace (Gmail)',
+  contactProcessor: 'Resend',
 };
 
 describe('owner-supplied facts', () => {
@@ -64,6 +76,9 @@ describe('owner-supplied facts', () => {
       expect(value, key).toBe(SUPPLIED[key as keyof LegalFacts]);
     }
     expect(missingFacts()).toEqual([]);
+    // Not a second company: the sender of sign-in email is the carrier of
+    // contact messages, because the route sends through it.
+    expect(SUPPLIED.contactProcessor).toBe(SUPPLIED.emailProvider);
   });
 
   it('render as a bracketed placeholder until set, then as the value', () => {
@@ -100,11 +115,14 @@ describe('Terms and Privacy pages', () => {
     const html = terms();
     expect(html).toContain('<h2>Refunds and cancellation</h2>');
     expect(html).toContain(
-      'You can request a refund within 30 days of purchase by writing to contact@frontierforge.tech, for an evidence bundle we have not yet delivered.',
+      'You can request a refund within 30 days of purchase by writing to hello@lacre.dev, for an evidence bundle we have not yet delivered.',
     );
     // A delivered bundle's timestamp has been issued and cannot be withdrawn.
     expect(html).toContain('A delivered bundle is not refundable: its timestamp has already been issued and cannot be undone.');
-    expect(html).toMatch(/cancelled at any time in the billing portal/);
+    // Cloud is off sale, so the page promises the terms rather than describing a
+    // cancellation nobody can perform (#258). The portal sentence returns with the product.
+    expect(html).toMatch(/Subscriptions \(Cloud\) are not on sale yet\./);
+    expect(html).not.toMatch(/cancelled at any time in the billing portal/);
     expect(html).toMatch(/does not show that an\s+action happened as described/);
   });
 
@@ -112,8 +130,12 @@ describe('Terms and Privacy pages', () => {
     const html = privacy();
     expect(html).toContain('Your chain file, if you buy an evidence bundle.');
     expect(html).toContain('It never holds a signing key, and we never ask for one.');
-    expect(html).toMatch(/we keep the chain file and the bundle for\s+90 days/);
-    expect(html).toContain('Microsoft 365 (Exchange Online), which hosts the inbox that receives chain files for evidence bundles.');
+    // Was /we keep the chain file and the bundle for\s+90 days/. The period is
+    // unchanged; the sentence no longer implies something automatic enforces it,
+    // because nothing does. Same intent, so the assertion moves rather than goes.
+    expect(html).toMatch(/we delete it and the bundle within\s+90 days/);
+    expect(html).toContain('There is no automatic expiry');
+    expect(html).toContain('Google Workspace (Gmail), which hosts the inbox that receives chain files for evidence bundles.');
     expect(html).toContain('We receive them only if you send us your chain file');
     expect(html).not.toContain('we never receive them');
     expect(REQUIRED_FACTS).toContain('bundleRetention');
@@ -147,7 +169,7 @@ describe('footer and checkout links', () => {
   });
 
   it('links Contact to the contact email now that it is set', () => {
-    expect(legalNav).toContain('href="mailto:contact@frontierforge.tech">Contact</a>');
+    expect(legalNav).toContain('href="mailto:hello@lacre.dev">Contact</a>');
   });
 
   it('checkout links the Terms and the Privacy Policy', () => {
@@ -167,11 +189,11 @@ describe('/.well-known/security.txt', () => {
     expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8');
     const body = await res.text();
     expect(SECURITY_REPORT_URL).toBe('https://github.com/JaredKlopstein/lacre/security/advisories/new');
-    expect(body.split('\n').slice(0, 2)).toEqual(['Contact: mailto:contact@frontierforge.tech', `Contact: ${SECURITY_REPORT_URL}`]);
+    expect(body.split('\n').slice(0, 2)).toEqual(['Contact: mailto:hello@lacre.dev', `Contact: ${SECURITY_REPORT_URL}`]);
     expect(body).not.toMatch(/owner to supply/);
   });
 
-  it('has an RFC 9116 Expires under a year ahead, and no Canonical or Policy until the site has a domain', async () => {
+  it('has an RFC 9116 Expires under a year ahead', async () => {
     const before = Date.now();
     const body = await securityTxt().text();
     const expires = /^Expires: (\S+)$/m.exec(body)?.[1] ?? '';
@@ -180,9 +202,33 @@ describe('/.well-known/security.txt', () => {
     expect(days).toBeGreaterThan(0);
     expect(days).toBeLessThan(365);
     expect(body).toMatch(/^Preferred-Languages: en$/m);
-    expect(BRAND.domain).toBeNull();
-    // Both must be absolute https URLs on the site's own origin, which needs a domain.
-    expect(body).not.toMatch(/^(Canonical|Policy):/m);
+  });
+
+  /**
+   * This used to assert the opposite — that BRAND.domain was null and the two
+   * lines were absent — which was right while no domain was attached: Canonical
+   * and Policy must be absolute https URLs on the site's own origin, and there
+   * was no origin to build them from. With a domain attached the same intent is
+   * "emit them, on that origin", so the assertion is inverted rather than
+   * deleted, and the detached case is kept below.
+   */
+  it('publishes Canonical and Policy on the attached domain', async () => {
+    const body = await securityTxt().text();
+    expect(BRAND.domain).not.toBeNull();
+    const origin = `https://${BRAND.domain}`;
+    expect(body).toMatch(new RegExp(`^Canonical: ${origin.replace(/\./g, '\\.')}/\\.well-known/security\\.txt$`, 'm'));
+    expect(body).toMatch(new RegExp(`^Policy: ${origin.replace(/\./g, '\\.')}/security#report-a-vulnerability$`, 'm'));
+  });
+
+  it('omits both lines again once the domain is detached, rather than guessing an origin', async () => {
+    const restore = withoutBrandDomain();
+    try {
+      const body = await securityTxt().text();
+      expect(body).not.toMatch(/^(Canonical|Policy):/m);
+      expect(body).toMatch(/^Preferred-Languages: en$/m);
+    } finally {
+      restore();
+    }
   });
 
   it('once set, has the RFC 9116 Contact and an Expires under a year ahead', () => {
@@ -201,14 +247,14 @@ describe('the supplied facts on the Terms and Privacy pages', () => {
   it('Terms name the entity, its form, contact, postal address and Wisconsin law', () => {
     const html = terms().replace(/&#x27;/g, "'");
     expect(html).toContain('is run by Ascella Studios LLC, a Wisconsin limited liability company');
-    expect(html).toContain('contact@frontierforge.tech, or by post at 408 N Votech Drive, Watertown, WI 53098.');
+    expect(html).toContain('hello@lacre.dev, or by post at 408 N Votech Drive, Watertown, WI 53098.');
     expect(html).toContain('These terms are governed by the laws of the State of Wisconsin.');
   });
 
   it('Privacy names the entity, its contact and postal address, and 90-day contact retention', () => {
     const html = privacy();
     expect(html).toContain('Ascella Studios LLC, a Wisconsin limited liability company, is responsible');
-    expect(html).toContain('contact@frontierforge.tech or write to 408 N Votech Drive, Watertown, WI 53098.');
+    expect(html).toContain('hello@lacre.dev or write to 408 N Votech Drive, Watertown, WI 53098.');
     expect(html).toMatch(/90 days/);
   });
 

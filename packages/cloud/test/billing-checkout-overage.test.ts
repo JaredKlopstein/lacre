@@ -187,7 +187,7 @@ describe('one subscription carrying the metered price per customer', () => {
   });
 
   it('checks the customer linked to the account, and sells to one with nothing active', async () => {
-    const r = routes({ existing: [{ ...subscription('sub_test_old', [PRICES.cloud_month, PRICES.overage_bundle], { provenant_plan: 'cloud' }), status: 'canceled' }] });
+    const r = routes({ existing: [{ ...subscription('sub_test_old', [PRICES.cloud_month, PRICES.overage_bundle], { lacre_plan: 'cloud' }), status: 'canceled' }] });
     expect((await checkout(r, monthly)).status).toBe(200);
     expect(r.lists).toEqual([expect.objectContaining({ customer: CUSTOMER, status: 'active' })]);
     expect(r.checkouts).toHaveLength(1);
@@ -197,17 +197,17 @@ describe('one subscription carrying the metered price per customer', () => {
     [
       'monthly checkout, by a customer with an active monthly Cloud subscription',
       monthly,
-      subscription('sub_test_monthly', [PRICES.cloud_month, PRICES.overage_bundle], { provenant_plan: 'cloud', provenant_interval: 'month' }),
+      subscription('sub_test_monthly', [PRICES.cloud_month, PRICES.overage_bundle], { lacre_plan: 'cloud', lacre_interval: 'month' }),
     ],
     [
       "monthly checkout, by an annual customer whose separate overage subscription is active",
       monthly,
-      subscription('sub_test_annual_overage', [PRICES.overage_bundle], { provenant_purchase: 'overage_bundle' }),
+      subscription('sub_test_annual_overage', [PRICES.overage_bundle], { lacre_purchase: 'overage_bundle' }),
     ],
     [
       'annual checkout, by a customer with an active monthly Cloud subscription',
       annual,
-      subscription('sub_test_monthly', [PRICES.cloud_month, PRICES.overage_bundle], { provenant_plan: 'cloud', provenant_interval: 'month' }),
+      subscription('sub_test_monthly', [PRICES.cloud_month, PRICES.overage_bundle], { lacre_plan: 'cloud', lacre_interval: 'month' }),
     ],
   ])('refuses %s with a 409 pointing to the billing portal, and creates no session', async (_label, body, existing) => {
     const r = routes({ existing: [existing] });
@@ -228,7 +228,7 @@ describe('one subscription carrying the metered price per customer', () => {
   });
 
   it('refuses annual checkout beside any active Cloud subscription, found by its metadata after a portal plan switch', async () => {
-    const r = routes({ existing: [subscription('sub_test_switched', [u('price', 'someotherprice')], { provenant_plan: 'cloud' })] });
+    const r = routes({ existing: [subscription('sub_test_switched', [u('price', 'someotherprice')], { lacre_plan: 'cloud' })] });
     expect((await checkout(r, annual)).status).toBe(409);
     expect(r.checkouts).toHaveLength(0);
   });

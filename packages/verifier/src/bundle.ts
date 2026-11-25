@@ -200,6 +200,53 @@ export function verifyBundle(input: unknown, opts: VerifyOptions = {}): BundleVe
     verdict.range = { from_seq: sorted[0]!.seq, to_seq: sorted[sorted.length - 1]!.seq };
   }
 
+  /**
+   * The range the bundle DECLARES it covers, as against `verdict.range`, which
+   * is recomputed from the receipts actually present.
+   *
+   * The two disagreeing is the only way a deleted prefix shows. The hash chain
+   * cannot see one: the anchored head is the hash of the last record, not an
+   * accumulator over all of them, so dropping earlier records leaves it
+   * untouched, and the first receipt of a non-genesis bundle has no predecessor
+   * here to link against. `checkRun` already rejects the identical truncation of
+   * a run, because a run must start at seq 0 with a null prev_hash; a bundle may
+   * legitimately cover a partial range, so what it claims to cover is the thing
+   * to hold it to.
+   */
+  const declaredFrom =
+    isObj(bundle.range) && typeof (bundle.range as { from_seq?: unknown }).from_seq === 'number'
+      ? (bundle.range as { from_seq: number }).from_seq
+      : null;
+
+  // A bundle with no receipts declares a range nothing in it can contradict, so
+  // that case is left exactly as it was.
+  if (declaredFrom !== null && sorted.length > 0 && sorted[0]!.seq !== declaredFrom) {
+    const lowest = sorted[0]!.seq;
+    verdict.failures.push({
+      seq: lowest,
+      record_id: null,
+      kind: 'SEQUENCE_GAP',
+      message:
+        lowest > declaredFrom
+          ? `the bundle declares it starts at seq ${declaredFrom}, but its lowest receipt is seq ${lowest}; ` +
+            `${lowest - declaredFrom} receipt(s) it claims to carry are missing`
+          : `the bundle declares it starts at seq ${declaredFrom}, but it carries a receipt at seq ${lowest}, ` +
+            `below the range it declares`,
+      expected: String(declaredFrom),
+      actual: String(lowest),
+    });
+  }
+
+  /**
+   * Whether the bundle CLAIMS to hold the chain from genesis, which is what
+   * makes an anchor's `receipt_count` reproducible from it. Keyed on the
+   * declared range rather than the lowest seq present: keying it on what was
+   * present is what let a deleted prefix switch the check off. A bundle with no
+   * usable declared range falls back to what is present, so this is never
+   * weaker than before.
+   */
+  const claimsGenesis = declaredFrom === null ? sorted.length > 0 && sorted[0]!.seq === 0 : declaredFrom === 0;
+
   const intactSeqs: number[] = [];
   /** seq -> recomputed hash, used to check anchors against real content. */
   const hashAt = new Map<number, string>();
@@ -260,7 +307,16 @@ export function verifyBundle(input: unknown, opts: VerifyOptions = {}): BundleVe
       if (parsed.prev_hash !== null) {
         fail('GENESIS_INVALID', `genesis receipt must have prev_hash null; found ${String(parsed.prev_hash)}`);
       }
-    } else if (prevHash !== null && parsed.prev_hash !== prevHash) {
+    } else if (prevHash === null) {
+      // The first receipt of a bundle that does not start at genesis. Its
+      // predecessor is outside the bundle, so there is nothing here to link it
+      // to. What is still checkable is that it does not claim to BE the start of
+      // the chain: only seq 0 may carry a null prev_hash.
+      if (parsed.prev_hash === null) {
+        fail('GENESIS_INVALID',
+          `the receipt at seq ${rec.seq} has prev_hash null, which only the genesis receipt at seq 0 may have`);
+      }
+    } else if (parsed.prev_hash !== prevHash) {
       fail('LINK_BROKEN', 'prev_hash does not match the previous receipt: a receipt was inserted, removed or reordered here',
         { expected: prevHash, actual: String(parsed.prev_hash ?? 'null') });
     }
@@ -292,7 +348,7 @@ export function verifyBundle(input: unknown, opts: VerifyOptions = {}): BundleVe
   const tolerance = opts.backdateToleranceMs ?? DEFAULT_BACKDATE_TOLERANCE_MS;
 
   for (const anchor of bundle.anchors) {
-    const av = verifyAnchor(anchor, bundle, hashAt, startsAtGenesis ? sorted : null, verdict, opts);
+    const av = verifyAnchor(anchor, bundle, hashAt, claimsGenesis ? sorted : null, verdict, opts);
     verdict.anchors.push(av);
 
     if (av.is_evidence && av.proven_time) {
@@ -395,7 +451,13 @@ function verifyAnchor(
   anchor: BundleAnchor,
   bundle: Bundle,
   hashAt: Map<number, string>,
-  /** The bundle's receipts in seq order when they start at genesis, else null. */
+  /**
+   * The bundle's receipts in seq order when the bundle DECLARES it starts at
+   * genesis, else null. Keyed on the declared range rather than the lowest seq
+   * present, because keying it on what was present let a deleted prefix switch
+   * this check off: the bundle still claimed to start at seq 0 and nothing
+   * looked. A bundle that honestly declares a partial range still skips it.
+   */
   fromGenesis: BundleReceipt[] | null,
   verdict: BundleVerdict,
   opts: VerifyOptions,
@@ -441,7 +503,9 @@ function verifyAnchor(
   }
 
   // receipt_count is the whole chain's count at anchor time, so it can only be
-  // reproduced when this bundle holds everything from genesis up to the anchor.
+  // reproduced when the bundle claims to hold everything from genesis up to the
+  // anchor. When it claims that and falls short, the receipts it claims are
+  // missing, which is what this catches.
   if (fromGenesis) {
     const counted = fromGenesis.filter((r) => r.seq <= anchor.statement.seq).length;
     if (anchor.statement.receipt_count !== counted) {
@@ -455,8 +519,8 @@ function verifyAnchor(
     }
   } else {
     verdict.warnings.push(
-      `anchor at seq ${anchor.statement.seq}: receipt_count check skipped, because this bundle does not start at seq 0 ` +
-        `and the chain's full count at anchor time cannot be reproduced from it`,
+      `anchor at seq ${anchor.statement.seq}: receipt_count check skipped, because this bundle does not declare that ` +
+        `it starts at seq 0 and the chain's full count at anchor time cannot be reproduced from it`,
     );
   }
 

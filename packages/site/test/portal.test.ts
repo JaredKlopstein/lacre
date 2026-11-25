@@ -12,6 +12,7 @@ import { BRAND } from '../src/brand.js';
 import { accountIdFor, sessionCookie } from '../src/auth/session.js';
 import type { BillingDb } from '../src/billing-db.js';
 import { PORTAL_API_PATH, createPortalRoute, type PortalRouteOptions } from '../src/portal.js';
+import { withoutBrandDomain } from './brand-domain.js';
 
 /**
  * The billing portal for signed-in customers (#62). Stripe is an in-memory fake
@@ -77,7 +78,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await pg.close();
 });
+let restoreBrandDomain: (() => void) | null = null;
 beforeEach(async () => {
+  restoreBrandDomain = withoutBrandDomain();
   await pg.exec('TRUNCATE billing_customers RESTART IDENTITY CASCADE');
   await db.insert(billingCustomers).values([
     { stripeCustomerId: ADA_CUSTOMER, accountId: await accountIdFor('ada@example.com') },
@@ -103,6 +106,8 @@ beforeEach(async () => {
   pageCookie.value = '';
 });
 afterEach(() => {
+  restoreBrandDomain?.();
+  restoreBrandDomain = null;
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });

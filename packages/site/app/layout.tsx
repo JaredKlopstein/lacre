@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { BRAND } from '../src/brand';
+import { SITE_ORIGIN } from '../src/public-pages';
 import { FONT_VARIABLES } from '../src/fonts';
 import { NavMenu } from '../src/nav-menu';
 import { GETTING_STARTED_URL } from '../src/plans';
@@ -9,6 +10,14 @@ import { SiteFooter } from '../src/site-footer';
 import './globals.css';
 
 export const metadata: Metadata = {
+  /*
+   * Every page's canonical is written as a path, and Next resolves it against
+   * this. Without it a relative canonical is dropped and an absolute one has to
+   * be typed out per page, which is how two pages end up claiming the same URL.
+   * SITE_ORIGIN reads BRAND.domain only, never the request host, so a preview
+   * deployment cannot publish a canonical pointing at itself.
+   */
+  ...(SITE_ORIGIN ? { metadataBase: new URL(SITE_ORIGIN) } : {}),
   // Pages set a short title; the template appends the brand. The home page sets none
   // and gets the default.
   title: {
